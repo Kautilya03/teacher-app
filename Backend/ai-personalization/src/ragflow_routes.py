@@ -33,7 +33,7 @@ if os.getenv("GEMINI_API_KEY"):
 ragflow_bp = Blueprint("ragflow", __name__, url_prefix="/api/ragflow")
 DEFAULT_DATASET_NAME = os.getenv("RAGFLOW_DEFAULT_DATASET", "gurusikshan-ncert")
 DEFAULT_CHAT_ID = os.getenv("RAGFLOW_CHAT_ID", "")
-JWT_SECRET = os.getenv("JWT_SECRET", "your-super-secret-key")  # NOTE : both backend api and RAGFLOW service need same key , hence global env
+JWT_SECRET = os.getenv("JWT_SECRET")  # NOTE : both backend api and RAGFLOW service need same key , hence global env
 
 
 # ─────────────────────────────────────────────────────────────────────────────

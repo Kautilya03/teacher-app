@@ -29,6 +29,8 @@ def authenticate_client(client_id: str, client_secret: str) -> dict | None:
         return None
 
     client = result.data
+    if not client.get("client_secret_hash"):
+        return None
     if not bcrypt.checkpw(client_secret.encode(), client["client_secret_hash"].encode()):
         return None
 

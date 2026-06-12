@@ -82,9 +82,15 @@ def internal_error(error):
 
 if __name__ == '__main__':
     port = int(os.getenv('FLASK_PORT', 5001))
+    flask_env = os.getenv('FLASK_ENV', 'development').lower()
+    if flask_env == 'production':
+        debug_mode = False
+    else:
+        debug_mode = os.getenv('FLASK_DEBUG', 'false').lower() in ['true', '1', 'yes']
     print(f"\n[INFO] AI Personalization Service starting on port {port}")
+    print(f"[INFO] Environment: {flask_env.upper()}")
+    print(f"[INFO] Debug Mode: {'ENABLED' if debug_mode else 'DISABLED'}")
     print(f"[INFO] RAGFlow Integration: ENABLED")
     print(f"[INFO] CORS: Enabled")
     print(f"[INFO] Gemini API: {'Configured' if os.getenv('GEMINI_API_KEY') else 'Not configured'}\n")
-    
-    app.run(host='0.0.0.0', port=port, debug=True)
+    app.run(host='0.0.0.0', port=port, debug=debug_mode)

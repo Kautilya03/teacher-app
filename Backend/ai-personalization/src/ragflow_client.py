@@ -29,8 +29,6 @@ RAGFLOW_TIMEOUT_SEC = int(os.getenv("RAGFLOW_TIMEOUT_SEC", "30"))
 
 def _auth_headers(json_content: bool = True) -> Dict[str, str]:
     """Generate authorization headers for RAGFlow API requests."""
-    print("[ragflow_client] api key present:", bool(RAGFLOW_API_KEY))
-    print("[ragflow_client] api key prefix:", (RAGFLOW_API_KEY or "")[:12])
     if not RAGFLOW_API_KEY:
         raise ValueError("RAGFLOW_API_KEY is not set")
 
@@ -97,45 +95,32 @@ def _get_headers() -> Dict[str, str]:
     """Alias for _auth_headers — used by chat assistant management functions."""
     return _auth_headers(json_content=True)
 
-def delete_chat_assistants_bulk(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Bulk delete chat assistants by IDs list or delete_all flag."""
-    ids = payload.get("ids") or []
-    delete_all = payload.get("delete_all", False)
-    body = {"ids": ids, "delete_all": delete_all}
-    return _delete("/api/v1/chats", json=body)
-
 def create_chat_assistant(name: str, dataset_ids: List[str], **kwargs) -> Dict[str, Any]:
-    url = f"{RAGFLOW_BASE_URL}/api/v1/chats"
+    """Create a new RAGFlow chat assistant."""
     payload = {"name": name, "dataset_ids": dataset_ids, **kwargs}
-    response = requests.post(url, json=payload, headers=_get_headers(), timeout=30)
-    return response.json()
+    return _post("/api/v1/chats", json=payload)
 
 def get_chat_assistant(chat_id: str) -> Dict[str, Any]:
-    url = f"{RAGFLOW_BASE_URL}/api/v1/chats/{chat_id}"
-    response = requests.get(url, headers=_get_headers(), timeout=30)
-    return response.json()
+    """Retrieve details for a specific chat assistant."""
+    return _get(f"/api/v1/chats/{chat_id}")
 
 def update_chat_assistant(chat_id: str, name: str, dataset_ids: List[str], **kwargs) -> Dict[str, Any]:
-    url = f"{RAGFLOW_BASE_URL}/api/v1/chats/{chat_id}"
+    """Full update (PUT) of a chat assistant's configuration."""
     payload = {"name": name, "dataset_ids": dataset_ids, **kwargs}
-    response = requests.put(url, json=payload, headers=_get_headers(), timeout=30)
-    return response.json()
+    return _put(f"/api/v1/chats/{chat_id}", json=payload)
 
 def patch_chat_assistant(chat_id: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-    url = f"{RAGFLOW_BASE_URL}/api/v1/chats/{chat_id}"
-    response = requests.patch(url, json=payload, headers=_get_headers(), timeout=30)
-    return response.json()
+    """Partial update (PATCH) of a chat assistant's configuration."""
+    return _patch(f"/api/v1/chats/{chat_id}", json=payload)
 
 def delete_chat_assistant(chat_id: str) -> Dict[str, Any]:
-    url = f"{RAGFLOW_BASE_URL}/api/v1/chats/{chat_id}"
-    response = requests.delete(url, headers=_get_headers(), timeout=30)
-    return response.json()
+    """Delete a single chat assistant."""
+    return _delete(f"/api/v1/chats/{chat_id}")
 
 def list_chat_assistants(page: int = 1, page_size: int = 30, **kwargs) -> Dict[str, Any]:
-    url = f"{RAGFLOW_BASE_URL}/api/v1/chats"
+    """List chat assistants with pagination filters."""
     params = {"page": page, "page_size": page_size, **kwargs}
-    response = requests.get(url, params=params, headers=_get_headers(), timeout=30)
-    return response.json()
+    return _get("/api/v1/chats", params=params)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Health Check

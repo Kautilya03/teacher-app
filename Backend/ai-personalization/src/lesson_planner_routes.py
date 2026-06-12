@@ -33,7 +33,7 @@ from supabase_client import db
 
 lesson_bp = Blueprint("lesson", __name__, url_prefix="/api/lesson")
 
-JWT_SECRET = os.getenv("JWT_SECRET", "your-super-secret-key")
+JWT_SECRET = os.getenv("JWT_SECRET")
 DEFAULT_DATASET_NAME = os.getenv("RAGFLOW_DEFAULT_DATASET", "gurusikshan-ncert")
 DEFAULT_CHAT_ID = os.getenv("RAGFLOW_CHAT_ID", "")
 
@@ -386,9 +386,9 @@ def get_topic_context():
             return jsonify(error="question required"), 400
 
         dataset_id = _resolve_dataset_id(
-            dataset_id=(data.get("dataset_id") or "").strip(),
-            dataset_name=(data.get("dataset_name") or DEFAULT_DATASET_NAME).strip(),
-        )
+            board=(data.get("dataset_name") or DEFAULT_DATASET_NAME).strip(),
+            explicit_dataset_id=(data.get("dataset_id") or "").strip(),
+        )        
         top_k                = int(data.get("top_k", 6))
         similarity_threshold = float(data.get("similarity_threshold", 0.2))
 
@@ -409,7 +409,6 @@ def get_topic_context():
     except Exception as e:
         traceback.print_exc()
         return jsonify(error=str(e)), 500
-
 
 # ── Regenerate only the assignment for an existing plan ───────────────────
 # NOTE : needs to be saved

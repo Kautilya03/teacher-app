@@ -36,6 +36,24 @@ class SupabaseDB:
         except Exception as e:
             print(f"Error loading mappings: {e}")
             return []
+        
+    def get_teacher_issues(self, teacher_id):
+        """Fetch all issues mapped to a specific teacher."""
+        try:
+            response = self.client.table('issues').select('*').eq('teacher_id', teacher_id).execute()
+            return response.data if response.data else []
+        except Exception as e:
+            print(f"Error fetching teacher issues: {e}")
+            return []
+
+    def get_issue_by_id(self, issue_id: str):
+        """Fetch a single issue by its unique ID."""
+        try:
+            response = self.client.table('issues').select('*').eq('id', issue_id).execute()
+            return response.data[0] if response.data else None
+        except Exception as e:
+            print(f"Error fetching issue by ID: {e}")
+            return None
     
     # Backward compatibility alias
     def get_teacher_feedback(self, teacher_id):
