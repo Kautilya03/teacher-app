@@ -1,0 +1,8 @@
+Flask==3.0.0
+Flask-Cors==4.0.0
+google-generativeai==0.3.2
+supabase
+supabase-auth
+python-dotenv==1.0.0
+requests
+bcrypt
