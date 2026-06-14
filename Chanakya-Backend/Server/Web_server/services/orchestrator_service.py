@@ -170,18 +170,18 @@ class OrchestratorService:
                 query=query_request.query[:100],  # Log first 100 chars
                 session_id=query_request.session_id
             )
-            
+
             # Create orchestrator input (include document_id in context if present for future use)
             context = dict(query_request.context or {})
             if getattr(query_request, "document_id", None):
                 context["document_id"] = query_request.document_id
-            
+
             orchestrator_input = OrchestratorInput(
                 query=query_request.query,
                 context=context,
                 session_id=query_request.session_id or "default"
             )
-            
+
             # Process the query
             result = await self.orchestrator.process(orchestrator_input)
             
@@ -197,7 +197,7 @@ class OrchestratorService:
             # Convert orchestrator result to QueryResponse
             # OrchestratorOutput doesn't have 'success' field - determine from error
             success = result.error is None
-            
+
             # Convert result to dict if it's a Pydantic model
             result_dict = result.result
             if hasattr(result_dict, 'model_dump'):
@@ -207,12 +207,12 @@ class OrchestratorService:
             elif not isinstance(result_dict, dict):
                 # If it's not a dict and not a model, convert to dict
                 result_dict = {"data": str(result_dict)}
-            
+
             # Extract resources from result if present (they're added by orchestrator)
             resources = None
             if isinstance(result_dict, dict) and "resources" in result_dict:
                 resources = result_dict.pop("resources", None)
-            
+
             response = QueryResponse(
                 success=success,
                 tool_used=result.tool_used,
@@ -290,10 +290,6 @@ class OrchestratorService:
         Returns:
             List of session information dictionaries
         """
-        if not self.initialized or not self.orchestrator:
-            logger.warning("Orchestrator not initialized")
-            return []
-        
         try:
             if self.orchestrator.storage:
                 sessions = await self.orchestrator.storage.get_recent_sessions(limit)
@@ -326,10 +322,6 @@ class OrchestratorService:
         Returns:
             List of message dictionaries
         """
-        if not self.initialized or not self.orchestrator:
-            logger.warning("Orchestrator not initialized")
-            return []
-        
         try:
             if self.orchestrator.storage:
                 return await self.orchestrator.storage.get_messages(session_id)
@@ -348,10 +340,6 @@ class OrchestratorService:
         Returns:
             True if deleted successfully, False otherwise
         """
-        if not self.initialized or not self.orchestrator:
-            logger.warning("Orchestrator not initialized")
-            return False
-        
         try:
             if self.orchestrator.storage:
                 return await self.orchestrator.storage.delete_session(session_id)

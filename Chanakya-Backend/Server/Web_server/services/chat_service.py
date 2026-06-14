@@ -15,7 +15,12 @@ class ChatService:
     """Service for managing chat sessions and messages."""
     
     @staticmethod
-    async def get_or_create_session(session_id: str, user_id: str) -> ChatSession:
+    async def get_or_create_session(
+        session_id: str,
+        user_id: str,
+        ragflow_session_id: Optional[str] = None,
+        ragflow_context: Optional[dict] = None,
+    ) -> ChatSession:
         """
         Get existing session or create new one.
         
@@ -37,11 +42,23 @@ class ChatService:
             session = ChatSession(
                 session_id=session_id,
                 user_id=user_id,
+                ragflow_session_id=ragflow_session_id,
+                ragflow_context=ragflow_context,
                 title="New Chat",
                 message_count=0
             )
             await session.insert()
             logger.info(f"Created new chat session: {session_id} for user: {user_id}")
+        else:
+            updated = False
+            if ragflow_session_id and session.ragflow_session_id != ragflow_session_id:
+                session.ragflow_session_id = ragflow_session_id
+                updated = True
+            if ragflow_context is not None and session.ragflow_context != ragflow_context:
+                session.ragflow_context = ragflow_context
+                updated = True
+            if updated:
+                await session.save()
         
         return session
     

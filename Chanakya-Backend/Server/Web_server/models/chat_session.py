@@ -33,6 +33,8 @@ class ChatSession(Document):
     
     session_id: Indexed(str, unique=True)  # type: ignore
     user_id: Indexed(str)  # type: ignore
+    ragflow_session_id: Optional[str] = Field(None, description="Associated RAGFlow session identifier")
+    ragflow_context: Optional[Dict[str, Any]] = Field(default=None, description="Context used when creating the RAGFlow session")
     title: str = Field(default="New Chat", description="Session title (first message preview)")
     message_count: int = Field(default=0, description="Number of messages in session")
     last_message_preview: Optional[str] = Field(None, description="Preview of last message")

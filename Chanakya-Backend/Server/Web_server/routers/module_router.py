@@ -28,6 +28,7 @@ from module.services.lesson_storage import LessonStorageService
 from module.generators.lesson_generator import LessonGenerator
 from module.generators.assignment_generator import AssignmentGenerator
 from module.exporters.export_service import ExportService
+from services.ragflow_v2 import ragflow_service
 
 # Import settings for API key
 try:
@@ -263,13 +264,26 @@ async def generate_lesson(request: LessonGenerationRequest):
         assignment_gen = get_assignment_generator()
         storage = get_lesson_storage()
         
-        # Step 1: Retrieve textbook content
+        # Step 1: Retrieve textbook content from RAGFlow, with local fallback if needed
         logger.info(f"Retrieving content for {request.class_name}/{request.subject}/{request.topic}")
-        textbook_content = await topic_selector.get_content_for_topic(
-            request.class_name,
-            request.subject,
-            request.topic
-        )
+        textbook_content = []
+        retrieval_meta = {"dataset_id": None, "dataset_name": None, "rag_chunks_used": 0, "ragflow_session_id": None}
+        try:
+            textbook_content, retrieval_meta = await ragflow_service.retrieve_textbook_content(
+                request.class_name,
+                request.subject,
+                request.topic,
+                language=request.language,
+                board=request.board,
+            )
+        except Exception as exc:
+            logger.warning(f"RAGFlow retrieval failed, falling back to local topic selector: {exc}")
+            textbook_content = await topic_selector.get_content_for_topic(
+                request.class_name,
+                request.subject,
+                request.topic
+            )
+            retrieval_meta = {"dataset_id": None, "dataset_name": None, "rag_chunks_used": len(textbook_content), "ragflow_session_id": None}
         
         if not textbook_content:
             raise HTTPException(
@@ -293,13 +307,16 @@ async def generate_lesson(request: LessonGenerationRequest):
             textbook_content=textbook_content
         )
         
-        # Step 4: Save lesson and assignment
-        logger.info("Saving lesson and assignment...")
-        lesson_id = await storage.save_lesson(lesson, assignment)
-        
-        # Update lesson with saved ID
-        lesson.id = lesson_id
-        assignment.lesson_id = lesson_id
+        saved_id = None
+        if request.save:
+            # Step 4: Save lesson and assignment
+            logger.info("Saving lesson and assignment...")
+            lesson_id = await storage.save_lesson(lesson, assignment)
+
+            # Update lesson with saved ID
+            lesson.id = lesson_id
+            assignment.lesson_id = lesson_id
+            saved_id = lesson_id
         
         generation_time_ms = (time.time() - start_time) * 1000
         logger.info(f"Generation completed in {generation_time_ms:.0f}ms")
@@ -308,7 +325,11 @@ async def generate_lesson(request: LessonGenerationRequest):
             lesson=lesson,
             assignment=assignment,
             generation_time_ms=generation_time_ms,
-            validation_report=validation_report
+            validation_report=validation_report,
+            dataset_id=retrieval_meta.get("dataset_id"),
+            dataset_name=retrieval_meta.get("dataset_name"),
+            rag_chunks_used=retrieval_meta.get("rag_chunks_used"),
+            saved_id=saved_id,
         )
         
     except HTTPException:

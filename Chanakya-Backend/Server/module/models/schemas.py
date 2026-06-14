@@ -226,6 +226,10 @@ class LessonGenerationRequest(BaseModel):
     class_name: str = Field(..., description="Class/grade level", min_length=1)
     subject: str = Field(..., description="Subject name", min_length=1)
     topic: str = Field(..., description="Topic/chapter name", min_length=1)
+    duration_minutes: Optional[int] = Field(None, description="Optional lesson duration")
+    language: Optional[str] = Field(None, description="Optional lesson language")
+    board: Optional[str] = Field(None, description="Optional board/curriculum")
+    save: bool = Field(True, description="Whether to persist the generated lesson")
 
 
 class LessonGenerationResponse(BaseModel):
@@ -234,3 +238,7 @@ class LessonGenerationResponse(BaseModel):
     assignment: Assignment = Field(..., description="Generated assignment")
     generation_time_ms: float = Field(..., ge=0, description="Time taken to generate")
     validation_report: ValidationReport = Field(..., description="Validation results")
+    dataset_id: Optional[str] = Field(None, description="RAGFlow dataset identifier used for retrieval")
+    dataset_name: Optional[str] = Field(None, description="RAGFlow dataset name used for retrieval")
+    rag_chunks_used: Optional[int] = Field(None, description="Number of retrieved context chunks used")
+    saved_id: Optional[str] = Field(None, description="Persisted lesson identifier when save=true")

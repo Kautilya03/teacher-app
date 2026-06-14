@@ -221,6 +221,13 @@ async def process_query(
                    query=query_request.query[:100], 
                    user_id=user_id,
                    session_id=query_request.session_id)
+
+        if query_request.session_id:
+            await ChatService.get_or_create_session(
+                session_id=query_request.session_id,
+                user_id=user_id,
+                ragflow_context=query_request.context or {},
+            )
         
         if not orchestrator_service.is_ready():
             raise HTTPException(
@@ -423,7 +430,7 @@ async def get_status() -> JSONResponse:
 
 
 @router.get("/history")
-async def get_chat_history(limit: int = 20) -> JSONResponse:
+async def get_chat_history(limit: int = 20, user_id: str = Depends(get_current_user_id)) -> JSONResponse:
     """
     Get recent chat history sessions.
     
@@ -467,7 +474,7 @@ async def get_chat_history(limit: int = 20) -> JSONResponse:
 
 
 @router.get("/history/{session_id}")
-async def get_session_history(session_id: str) -> JSONResponse:
+async def get_session_history(session_id: str, user_id: str = Depends(get_current_user_id)) -> JSONResponse:
     """
     Get message history for a specific session.
     
@@ -512,7 +519,7 @@ async def get_session_history(session_id: str) -> JSONResponse:
 
 
 @router.delete("/history/{session_id}")
-async def delete_session(session_id: str) -> JSONResponse:
+async def delete_session(session_id: str, user_id: str = Depends(get_current_user_id)) -> JSONResponse:
     """
     Delete a chat session and its history.
     
