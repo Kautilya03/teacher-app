@@ -258,7 +258,7 @@ class RAGFlowClientV2:
                 if isinstance(chunk, dict):
                     content = chunk.get("content") or chunk.get("text") or ""
                     source = chunk.get("document_name") or chunk.get("source") or f"RAGFlow_{idx}"
-                    score = chunk.get("similarity_score") or chunk.get("score")
+                    score = chunk.get("similarity") or chunk.get("similarity_score") or chunk.get("score")
                     
                     if content:
                         textbook_content.append(
@@ -665,7 +665,7 @@ class RAGFlowClientV2:
             if isinstance(chunk, dict):
                 content = chunk.get("content") or chunk.get("text") or ""
                 source = chunk.get("document_name") or chunk.get("source") or f"RAGFlow_{idx}"
-                score = chunk.get("similarity_score") or chunk.get("score") or 0.0
+                score = chunk.get("similarity") or chunk.get("similarity_score") or chunk.get("score") or 0.0
                 if content:
                     normalized.append({
                         "content": content,
@@ -673,6 +673,50 @@ class RAGFlowClientV2:
                         "similarity": score,
                     })
         return normalized
+
+    def create_new_session(self, chat_id: str = "", name: str = "Default Session") -> Optional[str]:
+        """Create a new session under a specific chat assistant."""
+        try:
+            cid = self._resolve_chat_id(chat_id)
+            resp = self.session.post(
+                self._url(f"/api/v1/chats/{cid}/sessions"),
+                headers=self._headers(),
+                json={"name": name},
+                timeout=self.timeout_sec,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            if data.get("data") and isinstance(data["data"], dict):
+                return data["data"].get("id")
+            return None
+        except Exception as e:
+            logger.error(f"Failed to create new session: {e}")
+            return None
+
+    def chat_completion_stateful(
+        self, question: str, chat_id: str = "", session_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Send a question to RAGFlow's stateful chat completions endpoint."""
+        try:
+            cid = self._resolve_chat_id(chat_id)
+            payload = {
+                "question": question,
+                "stream": False
+            }
+            if session_id:
+                payload["session_id"] = session_id
+                
+            resp = self.session.post(
+                self._url(f"/api/v1/chats/{cid}/completions"),
+                headers=self._headers(),
+                json=payload,
+                timeout=120,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except Exception as e:
+            logger.error(f"Stateful chat completion error: {e}")
+            return {"success": False, "error": str(e)}
 
     async def retrieve_raw_chunks_async(
         self,

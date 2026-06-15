@@ -36,14 +36,14 @@ async def connect_to_mongo():
             DiscussPost, DiscussReply,
         ]
     )
-    print(f"✅ Connected to MongoDB: {settings.DATABASE_NAME}")
+    print(f"[DB] Connected to MongoDB: {settings.DATABASE_NAME}")
 
 
 async def close_mongo_connection():
     """Close database connection."""
     if db.client:
         db.client.close()
-        print("✅ MongoDB connection closed")
+        print("[DB] MongoDB connection closed")
 
 
 async def get_database():

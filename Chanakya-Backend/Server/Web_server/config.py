@@ -4,12 +4,10 @@ Configuration for the Chanakya Web Server.
 import os
 from typing import Optional
 from pathlib import Path
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 
-# Load .env file from root directory (Chanakya/)
-root_dir = Path(__file__).parent.parent.parent
-env_path = root_dir / '.env'
-load_dotenv(dotenv_path=env_path)
+# Load .env file
+load_dotenv(find_dotenv())
 
 class Settings:
     """Application settings."""
