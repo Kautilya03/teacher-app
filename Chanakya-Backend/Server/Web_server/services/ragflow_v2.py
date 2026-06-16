@@ -194,13 +194,32 @@ class RAGFlowClientV2:
             data = resp.json()
             
             # Extract chunks from response
+            chunks = []
             if data.get("data"):
-                chunks = data["data"]
-                if isinstance(chunks, dict):
-                    return chunks.get("chunks", [])
-                if isinstance(chunks, list):
-                    return chunks
-            return []
+                raw_chunks = data["data"]
+                if isinstance(raw_chunks, dict):
+                    chunks = raw_chunks.get("chunks", [])
+                elif isinstance(raw_chunks, list):
+                    chunks = raw_chunks
+            
+            # Nice print statement for developer logging/debugging
+            print(f"\n=========================================")
+            print(f"📡 RAGFLOW RETRIEVAL SUCCESSFUL")
+            print(f"❓ Question : '{question}'")
+            print(f"📁 Datasets : {dataset_ids}")
+            print(f"📊 Count    : {len(chunks)} chunk(s) retrieved")
+            print(f"=========================================")
+            for i, c in enumerate(chunks[:3]):
+                content = c.get("content") or c.get("text") or ""
+                doc_name = c.get("document_name") or c.get("source") or "Unknown Document"
+                score = c.get("similarity") or c.get("similarity_score") or c.get("score") or 0.0
+                print(f"  [{i+1}] Doc: '{doc_name}' | Score: {score}")
+                print(f"      Snippet: {content[:150].strip().replace(chr(10), ' ')}...")
+            if len(chunks) > 3:
+                print(f"  ... and {len(chunks) - 3} more chunk(s).")
+            print(f"=========================================\n")
+
+            return chunks
         except Exception as e:
             logger.error(f"Failed to retrieve chunks: {e}")
             return []
@@ -235,13 +254,8 @@ class RAGFlowClientV2:
                 return [], {"error": "no_dataset_configured"}
 
             # Build question for retrieval
-            question_parts = [f"{class_name}", f"{subject}", f"{topic}"]
-            if language:
-                question_parts.append(f"in {language}")
-            if board:
-                question_parts.append(f"({board} board)")
-
-            question = " ".join(question_parts)
+            clean_class = class_name.replace("_", " ")
+            question = f"{clean_class} {subject} {topic}"
             logger.info(f"Retrieving RAGFlow content: {question}")
 
             # Retrieve chunks
@@ -264,21 +278,14 @@ class RAGFlowClientV2:
                         textbook_content.append(
                             TextbookContent(
                                 content=content,
-                                source=str(source),
+                                source=f"{class_name}|{subject}|{source}",
                                 similarity_score=score,
                             )
                         )
 
-            # Fallback to empty placeholder if no chunks retrieved
+            # Return empty list if no chunks retrieved to enforce RAGFlow focus
             if not textbook_content:
                 logger.warning(f"No chunks retrieved from RAGFlow for: {question}")
-                textbook_content.append(
-                    TextbookContent(
-                        content=f"Content for {class_name} {subject} {topic} from {board or 'default'} board.",
-                        source="RAGFlow_fallback",
-                        similarity_score=None,
-                    )
-                )
 
             metadata = {
                 "dataset_id": dataset_id,

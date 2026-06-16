@@ -1,7 +1,9 @@
 """
 MongoDB database connection and initialization.
 """
+# pyrefly: ignore [missing-import]
 from motor.motor_asyncio import AsyncIOMotorClient
+# pyrefly: ignore [missing-import]
 from beanie import init_beanie
 from config import settings
 from models.user import User

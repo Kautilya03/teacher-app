@@ -12,6 +12,9 @@ import { useAuth } from "../context/AuthContext";
 import { transcribeAudio, textToSpeechAndPlay } from "../utils/sarvamApi";
 import ResponseFormatter from "../components/ResponseFormatter";
 import Header from "../components/Header";
+import LessonPreview from "../components/module/LessonPreview";
+import AssignmentPreview from "../components/module/AssignmentPreview";
+import ExportControls from "../components/module/ExportControls";
 
 function ChatInterface() {
   const { user } = useAuth();
@@ -46,6 +49,15 @@ function ChatInterface() {
   const [imagePreview, setImagePreview] = useState(null);
   const [analysisMode, setAnalysisMode] = useState('general');
   const [showAnalysisModes, setShowAnalysisModes] = useState(false);
+
+  // Chat Mode & Artifact Pane states
+  const [chatMode, setChatMode] = useState("general"); // "general" or "module_builder"
+  const [showArtifact, setShowArtifact] = useState(false);
+  const [activeArtifactLesson, setActiveArtifactLesson] = useState(null);
+  const [activeArtifactAssignment, setActiveArtifactAssignment] = useState(null);
+  const [activeArtifactTab, setActiveArtifactTab] = useState("lesson");
+  const [activeLessonId, setActiveLessonId] = useState(null);
+  const [isCollapsibleChatMinimized, setIsCollapsibleChatMinimized] = useState(false);
 
   // Load chat history on mount
   useEffect(() => {
@@ -99,6 +111,7 @@ function ChatInterface() {
       const response = await getSessionMessages(sessionId);
       if (response.success && response.messages) {
         // Convert backend messages to frontend format
+        let lastModuleMessage = null;
         const formattedMessages = response.messages.map((msg, idx) => {
           const baseMessage = {
             id: `session-${sessionId}-${idx}`,
@@ -127,6 +140,11 @@ function ChatInterface() {
                 };
                 baseMessage.tool_used = msg.tool_used || metadata.tool_used;
                 baseMessage.confidence = msg.confidence || metadata.confidence;
+
+                // Track the last module generator preview payload
+                if (metadata.result.status === "preview_module") {
+                  lastModuleMessage = metadata.result;
+                }
               }
             } catch (error) {
               console.error("Error parsing message metadata:", error);
@@ -138,6 +156,18 @@ function ChatInterface() {
 
         setMessages(formattedMessages);
         setCurrentSessionId(sessionId);
+
+        // Restore active workspace if session had a module
+        if (lastModuleMessage) {
+          setActiveArtifactLesson(lastModuleMessage.lesson);
+          setActiveArtifactAssignment(lastModuleMessage.assignment);
+          setActiveLessonId(lastModuleMessage.lesson_id);
+          setShowArtifact(true);
+          setChatMode("module_builder");
+        } else {
+          setShowArtifact(false);
+          setChatMode("general");
+        }
       }
     } catch (error) {
       console.error("Error loading session:", error);
@@ -151,6 +181,12 @@ function ChatInterface() {
     const newSessionId = `session_${Date.now()}`;
     setCurrentSessionId(newSessionId);
     setInput("");
+    setShowArtifact(false);
+    setActiveArtifactLesson(null);
+    setActiveArtifactAssignment(null);
+    setActiveLessonId(null);
+    setChatMode("general");
+    setIsCollapsibleChatMinimized(false);
   };
 
   // Auto-scroll to bottom when messages change
@@ -358,6 +394,12 @@ function ChatInterface() {
           quick_answer_mode: quickAnswerMode,
         };
         if (attachedDocumentId) context.document_id = attachedDocumentId;
+        if (chatMode === "module_builder") {
+          context.selected_tool = "module_builder";
+          if (activeLessonId) {
+            context.lesson_id = activeLessonId;
+          }
+        }
         data = await queryOrchestrator(userMessage, context);
       }
 
@@ -398,6 +440,15 @@ function ChatInterface() {
         },
       ]);
 
+      // If we got a module builder response with a module draft, load it into the active workspace
+      if (data.success && data.result && data.result.status === "preview_module") {
+        setActiveArtifactLesson(data.result.lesson);
+        setActiveArtifactAssignment(data.result.assignment);
+        setActiveLessonId(data.result.lesson_id);
+        setShowArtifact(true);
+        setActiveArtifactTab("lesson");
+      }
+
       // Refresh chat history to show new conversation
       await loadChatHistory();
     } catch (error) {
@@ -416,6 +467,78 @@ function ChatInterface() {
           id: `msg-${Date.now()}-${nextMessageIdRef.current++}`,
           from: "bot",
           text: errorMessage,
+        },
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleTopicSelect = async (className, subject, topicName) => {
+    setIsLoading(true);
+    const userMessage = `Generate module for chapter: ${topicName}`;
+    const userMsgId = `msg-${Date.now()}-${nextMessageIdRef.current++}`;
+    const botMsgId = `msg-${Date.now()}-${nextMessageIdRef.current++}`;
+    
+    setMessages((m) => [
+      ...m,
+      {
+        id: userMsgId,
+        from: "teacher",
+        text: userMessage,
+      },
+    ]);
+    
+    const sessionId = currentSessionId || `session_${Date.now()}`;
+    if (!currentSessionId) setCurrentSessionId(sessionId);
+    
+    try {
+      const context = {
+        session_id: sessionId,
+        selected_tool: "module_builder",
+        class_name: className,
+        subject: subject,
+        topic: topicName,
+      };
+      
+      const data = await queryOrchestrator(userMessage, context);
+      
+      let botResponseText = "";
+      if (data.success && data.result) {
+        botResponseText = data.result.response || "Module generated.";
+      } else {
+        botResponseText = data.error || "Sorry, failed to generate module.";
+      }
+      
+      setMessages((m) => [
+        ...m,
+        {
+          id: botMsgId,
+          from: "bot",
+          text: botResponseText,
+          data: data,
+          tool_used: data.tool_used,
+          confidence: data.confidence,
+        },
+      ]);
+      
+      if (data.success && data.result && data.result.status === "preview_module") {
+        setActiveArtifactLesson(data.result.lesson);
+        setActiveArtifactAssignment(data.result.assignment);
+        setActiveLessonId(data.result.lesson_id);
+        setShowArtifact(true);
+        setActiveArtifactTab("lesson");
+      }
+      
+      await loadChatHistory();
+    } catch (error) {
+      console.error("Error generating module:", error);
+      setMessages((m) => [
+        ...m,
+        {
+          id: `msg-${Date.now()}-${nextMessageIdRef.current++}`,
+          from: "bot",
+          text: `Error generating module: ${error.message}`,
         },
       ]);
     } finally {
@@ -670,9 +793,52 @@ function ChatInterface() {
         </aside>
 
         {/* Main Chat Area */}
-        <main className="flex-1 flex flex-col bg-[#FFFFFF] min-h-0">
-          {/* Mobile Header */}
-          <div className="md:hidden flex items-center justify-between px-4 py-3 border-b-2 border-[#000000] bg-[#FFFFFF]">
+        <main
+          className={`${
+            showArtifact
+              ? isCollapsibleChatMinimized
+                ? "w-0 hidden md:flex md:w-16 flex-none"
+                : "w-full md:w-[450px] flex-none border-r-0 md:border-r-2 border-[#000000]"
+              : "flex-1"
+          } flex flex-col bg-[#FFFFFF] min-h-0 transition-all duration-300 relative`}
+        >
+          {showArtifact && isCollapsibleChatMinimized ? (
+            <div className="flex-1 flex flex-col items-center justify-start py-6 gap-6 bg-[#F9F9FB] h-full border-r-2 border-[#000000]">
+              <button
+                onClick={() => setIsCollapsibleChatMinimized(false)}
+                className="p-2.5 border-2 border-[#000000] rounded-xl bg-[#FDE047] hover:bg-[#e0c23a] transition-all shadow-[2px_2px_0px_0px_#000000] hover:shadow-[1px_1px_0px_0px_#000000] hover:translate-y-0.5 text-[#000000]"
+                title="Expand Chat"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                </svg>
+              </button>
+              <div className="flex-1 flex items-center justify-center">
+                <span className="transform -rotate-90 whitespace-nowrap font-bold text-sm text-[#000000] tracking-wider uppercase">
+                  💬 Chat Assistant
+                </span>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Desktop Collapsible Header */}
+              {showArtifact && !isCollapsibleChatMinimized && (
+                <div className="hidden md:flex items-center justify-between px-4 py-3 border-b-2 border-[#000000] bg-[#F9F9FB] flex-shrink-0">
+                  <span className="font-bold text-xs uppercase tracking-wide text-[#000000]">Chat Assistant</span>
+                  <button
+                    onClick={() => setIsCollapsibleChatMinimized(true)}
+                    className="p-1 border-2 border-[#000000] rounded bg-white hover:bg-[#FDE047] transition-all shadow-[1px_1px_0px_0px_#000000] hover:translate-x-0.5 hover:translate-y-0.5"
+                    title="Collapse Chat"
+                  >
+                    <svg className="w-4 h-4 text-[#000000]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7M19 19l-7-7 7-7" />
+                    </svg>
+                  </button>
+                </div>
+              )}
+
+              {/* Mobile Header */}
+              <div className="md:hidden flex items-center justify-between px-4 py-3 border-b-2 border-[#000000] bg-[#FFFFFF]">
             <Link to="/" className="text-lg font-bold text-[#000000]">
               Chanakya
             </Link>
@@ -810,7 +976,14 @@ function ChatInterface() {
                       key={feature.name}
                       className="p-3 rounded-lg border-2 border-[#000000] text-left transition-all shadow-[2px_2px_0px_0px_#000000] hover:shadow-[1px_1px_0px_0px_#000000] hover:translate-x-0.5 hover:translate-y-0.5"
                       style={{ backgroundColor: feature.color }}
-                      onClick={() => setInput(`Activate ${feature.name}`)}
+                      onClick={() => {
+                        if (feature.name === "Module Creator") {
+                          setChatMode("module_builder");
+                          setInput("Create a module for class 7 geography");
+                        } else {
+                          setInput(`Activate ${feature.name}`);
+                        }
+                      }}
                     >
                       <div className="flex items-center gap-3">
                         <div className="text-[#000000]">{feature.icon}</div>
@@ -943,6 +1116,23 @@ function ChatInterface() {
                             text={message.text}
                             resources={message.data?.resources}
                           />
+                          {message.data?.result?.status === "select_topic" && message.data.result.topics && (
+                            <div className="mt-4 flex flex-wrap gap-2 justify-start max-w-2xl px-1">
+                              {message.data.result.topics.map((topicObj, idx) => (
+                                <button
+                                  key={idx}
+                                  onClick={() => handleTopicSelect(
+                                    message.data.result.class_name,
+                                    message.data.result.subject,
+                                    topicObj.topic_name
+                                  )}
+                                  className="px-3 py-1.5 bg-[#E8D5FF] hover:bg-[#d4c0f0] border-2 border-[#000000] rounded-lg font-bold text-xs shadow-[2px_2px_0px_0px_#000000] hover:shadow-[1px_1px_0px_0px_#000000] hover:translate-x-0.5 hover:translate-y-0.5 transition-all text-[#000000]"
+                                >
+                                  {topicObj.chapter_number ? `Ch ${topicObj.chapter_number}: ` : ""}{topicObj.topic_name}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
@@ -1211,9 +1401,10 @@ function ChatInterface() {
                 </button>
               </div>
 
-              {/* Quick Answer Mode Toggle */}
-              <div className="flex items-center justify-between mt-2">
-                <div className="flex items-center gap-2">
+              {/* Controls Footer with Mode Selector and Quick Mode */}
+              <div className="flex flex-wrap items-center justify-between gap-3 mt-2">
+                <div className="flex flex-wrap items-center gap-3">
+                  {/* Quick Answer Mode Toggle */}
                   <button
                     onClick={() => setQuickAnswerMode(!quickAnswerMode)}
                     className={`flex items-center gap-2 px-3 py-1.5 border-2 border-[#000000] rounded-lg font-bold text-sm transition-all shadow-[2px_2px_0px_0px_#000000] hover:shadow-[1px_1px_0px_0px_#000000] hover:translate-x-0.5 hover:translate-y-0.5 ${quickAnswerMode
@@ -1242,12 +1433,64 @@ function ChatInterface() {
                       </span>
                     )}
                   </button>
-                  {quickAnswerMode && (
-                    <span className="text-xs text-[#000000] opacity-70">
-                      Fast, short answers
-                    </span>
+
+                  {/* Chat Mode Selector Dropdown */}
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={chatMode}
+                      onChange={(e) => {
+                        const mode = e.target.value;
+                        setChatMode(mode);
+                        if (mode === "module_builder") {
+                          if (!input.trim()) {
+                            setInput("Create a module for Class 7 Geography");
+                          }
+                        }
+                      }}
+                      className="px-3 py-1.5 border-2 border-[#000000] rounded-lg font-bold text-sm bg-white text-[#000000] transition-all shadow-[2px_2px_0px_0px_#000000] hover:shadow-[1px_1px_0px_0px_#000000] focus:outline-none cursor-pointer"
+                      aria-label="Chat Mode"
+                    >
+                      <option value="general">💬 General Assistant</option>
+                      <option value="module_builder">📚 Module Creator</option>
+                    </select>
+                  </div>
+
+                  {/* Reopen Preview Button */}
+                  {!showArtifact && (activeArtifactLesson || activeArtifactAssignment) && (
+                    <button
+                      onClick={() => setShowArtifact(true)}
+                      className="flex items-center gap-2 px-3 py-1.5 border-2 border-[#000000] rounded-lg font-bold text-sm bg-[#D4F1C5] text-[#000000] transition-all shadow-[2px_2px_0px_0px_#000000] hover:shadow-[1px_1px_0px_0px_#000000] hover:translate-x-0.5 hover:translate-y-0.5"
+                      title="Open Preview Pane"
+                    >
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                        />
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                        />
+                      </svg>
+                      <span>Open Preview</span>
+                    </button>
                   )}
                 </div>
+
+                {quickAnswerMode && (
+                  <span className="text-xs text-[#000000] opacity-70">
+                    Fast, short answers
+                  </span>
+                )}
               </div>
 
               {/* <p className="text-xs text-[#000000] opacity-60 mt-1 text-center">
@@ -1255,7 +1498,89 @@ function ChatInterface() {
               </p> */}
             </div>
           </div>
+            </>
+          )}
         </main>
+
+        {/* Artifact Workspace Overlay */}
+        {showArtifact && (
+          <div
+            className={`${
+              isCollapsibleChatMinimized ? "flex-1" : "hidden md:flex md:flex-1"
+            } flex flex-col bg-white border-l-0 md:border-l-2 border-[#000000] min-h-0`}
+          >
+            {/* Artifact Header */}
+            <div className="p-4 border-b-2 border-[#000000] bg-[#F9F9FB] flex items-center justify-between flex-shrink-0">
+              <div className="flex items-center gap-3">
+                <span className="text-lg font-bold text-[#000000] flex items-center gap-2">
+                  ✨ Module Artifact
+                </span>
+                <span className="text-xs bg-[#D4F1C5] border-2 border-[#000000] px-2 py-0.5 rounded font-bold text-[#000000]">
+                  Active
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                {/* Close Artifact Button */}
+                <button
+                  onClick={() => setShowArtifact(false)}
+                  className="p-1.5 border-2 border-[#000000] rounded bg-white hover:bg-red-200 transition-all text-[#000000] shadow-[2px_2px_0px_0px_#000000] hover:translate-x-0.5 hover:translate-y-0.5"
+                  title="Close Artifact Pane"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Neo-brutalist Tabs */}
+            <div className="flex border-b-2 border-[#000000] bg-[#FFFFFF] flex-shrink-0">
+              <button
+                onClick={() => setActiveArtifactTab("lesson")}
+                className={`flex-1 py-3 px-4 text-center font-bold text-sm border-r-2 border-[#000000] transition-all ${
+                  activeArtifactTab === "lesson"
+                    ? "bg-[#FDE047] text-[#000000]"
+                    : "bg-white text-[#000000] hover:bg-gray-100"
+                }`}
+              >
+                🖼️ Slides Preview
+              </button>
+              <button
+                onClick={() => setActiveArtifactTab("assignment")}
+                className={`flex-1 py-3 px-4 text-center font-bold text-sm border-r-2 border-[#000000] transition-all ${
+                  activeArtifactTab === "assignment"
+                    ? "bg-[#E8D5FF] text-[#000000]"
+                    : "bg-white text-[#000000] hover:bg-gray-100"
+                }`}
+              >
+                📝 Assessment
+              </button>
+              <button
+                onClick={() => setActiveArtifactTab("export")}
+                className={`flex-1 py-3 px-4 text-center font-bold text-sm transition-all ${
+                  activeArtifactTab === "export"
+                    ? "bg-[#F99DA8] text-[#000000]"
+                    : "bg-white text-[#000000] hover:bg-gray-100"
+                }`}
+              >
+                📥 Export Controls
+              </button>
+            </div>
+
+            {/* Tab Contents - Scrollable */}
+            <div className="flex-1 overflow-y-auto p-6 bg-[#FAFAFA]">
+              {activeArtifactTab === "lesson" && (
+                <LessonPreview lesson={activeArtifactLesson} />
+              )}
+              {activeArtifactTab === "assignment" && (
+                <AssignmentPreview assignment={activeArtifactAssignment} />
+              )}
+              {activeArtifactTab === "export" && (
+                <ExportControls lesson={activeArtifactLesson} assignment={activeArtifactAssignment} />
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

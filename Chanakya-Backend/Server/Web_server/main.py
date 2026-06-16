@@ -50,6 +50,11 @@ async def lifespan(app: FastAPI):
         orchestrator_service.initialize()
         logger.info("Orchestrator service initialized successfully")
     except Exception as e:
+        import traceback
+        print("="*80)
+        print("❌ ORCHESTRATOR INITIALIZATION FAILED:")
+        traceback.print_exc()
+        print("="*80)
         logger.error(f"Failed to initialize orchestrator: {str(e)}")
         logger.warning("Continuing without orchestrator - /api/query endpoints will return 503")
     

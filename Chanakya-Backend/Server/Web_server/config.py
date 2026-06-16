@@ -40,7 +40,7 @@ class Settings:
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
 
     # RAGFlow Configuration
-    RAGFLOW_BASE_URL: str = os.getenv("RAGFLOW_BASE_URL", "http://localhost:5001")
+    RAGFLOW_BASE_URL: str = os.getenv("RAGFLOW_BASE_URL", os.getenv("RAGFLOW_API_URL", "http://localhost:5001"))
     RAGFLOW_API_KEY: str = os.getenv("RAGFLOW_API_KEY", "")
     RAGFLOW_CHAT_ID: str = os.getenv("RAGFLOW_CHAT_ID", "")
     RAGFLOW_CLIENT_ID: str = os.getenv("RAGFLOW_CLIENT_ID", "")

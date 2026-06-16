@@ -81,16 +81,22 @@ class OrchestratorService:
     def initialize(self):
         """Initialize the ChanakyaOrchestrator with API key."""
         try:
-            if not settings.GEMINI_API_KEY:
-                logger.error("GEMINI_API_KEY not found in configuration")
-                raise ValueError("GEMINI_API_KEY is required for orchestrator initialization")
+            api_key = os.getenv("OPENROUTER_API_KEY") or settings.GEMINI_API_KEY
+            if not api_key:
+                logger.error("Neither OPENROUTER_API_KEY nor GEMINI_API_KEY found in configuration")
+                raise ValueError("An API key (OPENROUTER_API_KEY or GEMINI_API_KEY) is required for orchestrator initialization")
             
             logger.info("Initializing ChanakyaOrchestrator")
-            self.orchestrator = ChanakyaOrchestrator(api_key=settings.GEMINI_API_KEY)
+            self.orchestrator = ChanakyaOrchestrator(api_key=api_key)
             self.initialized = True
             logger.info("ChanakyaOrchestrator initialized successfully")
             
         except Exception as e:
+            import traceback
+            print("="*80)
+            print("❌ OrchestratorService.initialize failed:")
+            traceback.print_exc()
+            print("="*80)
             logger.error(f"Failed to initialize orchestrator: {str(e)}")
             raise
     
@@ -179,7 +185,8 @@ class OrchestratorService:
             orchestrator_input = OrchestratorInput(
                 query=query_request.query,
                 context=context,
-                session_id=query_request.session_id or "default"
+                session_id=query_request.session_id or "default",
+                selected_tool=getattr(query_request, "selected_tool", None)
             )
 
             # Process the query

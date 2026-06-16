@@ -59,6 +59,9 @@ export const queryOrchestrator = async (query, context = {}) => {
   if (context.document_id) {
     body.document_id = context.document_id;
   }
+  if (context.selected_tool) {
+    body.selected_tool = context.selected_tool;
+  }
   const response = await apiClient.post('/api/query/query', body);
   return response.data;
 };

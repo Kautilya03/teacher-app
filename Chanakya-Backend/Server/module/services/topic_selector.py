@@ -28,6 +28,7 @@ class TopicSelectorService:
         Args:
             db_path: Path to SQLite database file. If None, uses default location.
         """
+        self.use_mock = False
         if db_path is None:
             # Try multiple possible locations for the database
             this_file_dir = os.path.dirname(os.path.abspath(__file__))
@@ -51,12 +52,20 @@ class TopicSelectorService:
                     break
             
             if db_path is None:
-                raise FileNotFoundError(
-                    f"Database not found. Searched in: {[os.path.normpath(p) for p in possible_paths]}"
+                logger.warning(
+                    f"Database not found. Searched in: {[os.path.normpath(p) for p in possible_paths]}. "
+                    "Falling back to mock database for offline/RAGFlow testing."
                 )
+                self.use_mock = True
+                self.db_path = "MOCK_DB"
+                return
         
         self.db_path = db_path
-        self._validate_database()
+        try:
+            self._validate_database()
+        except Exception as e:
+            logger.warning(f"Database validation failed: {e}. Falling back to mock database.")
+            self.use_mock = True
     
     def _validate_database(self) -> None:
         """Validate that the database exists and is accessible."""
@@ -107,6 +116,9 @@ class TopicSelectorService:
         Returns:
             List of class names, e.g., ["Class_6", "Class_7", "Class_8"]
         """
+        if self.use_mock:
+            return ["Class_6", "Class_7", "Class_8", "Class_9", "Class_10", "Class_11", "Class_12"]
+            
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT DISTINCT source FROM documents")
@@ -129,6 +141,9 @@ class TopicSelectorService:
         Returns:
             List of subject names available for the class
         """
+        if self.use_mock:
+            return ["Geography", "Science", "History", "Civics", "Mathematics"]
+            
         with self._get_connection() as conn:
             cursor = conn.cursor()
             # Use LIKE to filter by class prefix
@@ -163,6 +178,53 @@ class TopicSelectorService:
         Returns:
             List of TopicInfo objects with topic details
         """
+        if self.use_mock:
+            cls_lower = class_name.lower().replace(" ", "_")
+            sub_lower = subject.lower()
+            
+            if "class_7" in cls_lower and "geography" in sub_lower:
+                chapters = [
+                    "Environment",
+                    "Inside Our Earth",
+                    "Our Changing Earth",
+                    "Air",
+                    "Water",
+                    "Human Environment Interactions",
+                    "Life in the Deserts"
+                ]
+            elif "class_7" in cls_lower and "science" in sub_lower:
+                chapters = [
+                    "Nutrition in Plants",
+                    "Nutrition in Animals",
+                    "Heat",
+                    "Acids, Bases and Salts",
+                    "Physical and Chemical Changes",
+                    "Respiration in Organisms",
+                    "Transportation in Animals and Plants",
+                    "Reproduction in Plants",
+                    "Motion and Time",
+                    "Electric Current and its Effects",
+                    "Light"
+                ]
+            else:
+                chapters = [
+                    "Chapter 1: Introduction",
+                    "Chapter 2: Core Concepts",
+                    "Chapter 3: Detailed Study",
+                    "Chapter 4: Practical Applications",
+                    "Chapter 5: Summary and Review"
+                ]
+                
+            return [
+                TopicInfo(
+                    topic_name=chapter,
+                    chapter_number=idx + 1,
+                    page_range=f"{idx*10 + 1}-{(idx+1)*10}",
+                    content_count=10
+                )
+                for idx, chapter in enumerate(chapters)
+            ]
+            
         with self._get_connection() as conn:
             cursor = conn.cursor()
             # Filter by class and subject
@@ -238,6 +300,15 @@ class TopicSelectorService:
         Returns:
             List of TextbookContent objects with content and source info
         """
+        if self.use_mock:
+            return [
+                TextbookContent(
+                    content=f"Content placeholder for chapter '{topic}'. RAGFlow is active and will return actual content.",
+                    source=f"{class_name}|{subject}|{topic}|en|1",
+                    similarity_score=None
+                )
+            ]
+            
         with self._get_connection() as conn:
             cursor = conn.cursor()
             
@@ -302,6 +373,9 @@ class TopicSelectorService:
         Returns:
             List of TextbookContent objects sorted by similarity
         """
+        if self.use_mock:
+            return []
+            
         with self._get_connection() as conn:
             cursor = conn.cursor()
             
@@ -368,6 +442,9 @@ class TopicSelectorService:
         Returns:
             True if content exists, False otherwise
         """
+        if self.use_mock:
+            return True
+            
         with self._get_connection() as conn:
             cursor = conn.cursor()
             
