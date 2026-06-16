@@ -32,6 +32,7 @@ htmlcov/
 .hypothesis/
 .kiro/
 .qodo/
+postgres-data/
 
 
 # Node.js
