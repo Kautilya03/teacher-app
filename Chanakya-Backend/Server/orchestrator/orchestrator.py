@@ -369,7 +369,9 @@ class ChanakyaOrchestrator:
         
         for tool_name, tool_class in tool_classes.items():
             try:
-                if tool_name in ["content_explainer", "resource_finder"]:
+                if tool_name == "content_explainer":
+                    self.tools[tool_name] = tool_class(api_key=api_key)
+                elif tool_name == "resource_finder":
                     self.tools[tool_name] = tool_class()
                 else:
                     self.tools[tool_name] = tool_class(api_key=api_key)
@@ -809,6 +811,29 @@ Language:""")]
             return {
                 "selected_tool": manual_tool,
                 "tool_reasoning": f"Manual tool selection override: {manual_tool}",
+                "intent": query,
+                "confidence": 1.0,
+            }
+            
+        # Check if the query is a module/lesson plan request
+        query_lower = query.lower()
+        is_module_request = (
+            "generate module" in query_lower or
+            "create module" in query_lower or
+            "build module" in query_lower or
+            "module for chapter" in query_lower or
+            "lesson plan" in query_lower or
+            "slide plan" in query_lower or
+            "2 slide" in query_lower or
+            "create a module" in query_lower or
+            ("module" in query_lower and "chapter" in query_lower) or
+            ("lesson" in query_lower and "plan" in query_lower)
+        )
+        if is_module_request:
+            self.logger.info("module_request_detected", query=query)
+            return {
+                "selected_tool": "module_builder",
+                "tool_reasoning": "Detected module or lesson plan request, routing to module_builder tool",
                 "intent": query,
                 "confidence": 1.0,
             }

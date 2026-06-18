@@ -168,7 +168,7 @@ class RAGFlowClientV2:
         question: str,
         dataset_ids: List[str],
         top_k: int = 6,
-        similarity_threshold: float = 0.2,
+        similarity_threshold: float = 0.4,
     ) -> List[Dict[str, Any]]:
         """Retrieve relevant chunks from datasets."""
         if not dataset_ids:
@@ -204,19 +204,18 @@ class RAGFlowClientV2:
             
             # Nice print statement for developer logging/debugging
             print(f"\n=========================================")
-            print(f"📡 RAGFLOW RETRIEVAL SUCCESSFUL")
-            print(f"❓ Question : '{question}'")
-            print(f"📁 Datasets : {dataset_ids}")
-            print(f"📊 Count    : {len(chunks)} chunk(s) retrieved")
+            print(f"[RAGFLOW] RAGFLOW RETRIEVAL SUCCESSFUL")
+            print(f"[QUERY] Question : '{question}'")
+            print(f"[DATASETS] Datasets : {dataset_ids}")
+            print(f"[COUNT] Count    : {len(chunks)} chunk(s) retrieved")
             print(f"=========================================")
-            for i, c in enumerate(chunks[:3]):
+            for i, c in enumerate(chunks):
                 content = c.get("content") or c.get("text") or ""
                 doc_name = c.get("document_name") or c.get("source") or "Unknown Document"
                 score = c.get("similarity") or c.get("similarity_score") or c.get("score") or 0.0
                 print(f"  [{i+1}] Doc: '{doc_name}' | Score: {score}")
-                print(f"      Snippet: {content[:150].strip().replace(chr(10), ' ')}...")
-            if len(chunks) > 3:
-                print(f"  ... and {len(chunks) - 3} more chunk(s).")
+                print(f"      Content: {content.strip()}")
+                print(f"  -----------------------------------------")
             print(f"=========================================\n")
 
             return chunks
@@ -263,7 +262,7 @@ class RAGFlowClientV2:
                 question=question,
                 dataset_ids=[dataset_id],
                 top_k=limit,
-                similarity_threshold=0.2,
+                similarity_threshold=0.4,
             )
 
             # Normalize to TextbookContent
@@ -664,7 +663,7 @@ class RAGFlowClientV2:
             question=question,
             dataset_ids=[dataset_id],
             top_k=limit,
-            similarity_threshold=0.2,
+            similarity_threshold=0.4,
         )
 
         normalized = []

@@ -65,9 +65,16 @@ class LessonStorageService:
                     teacher_id TEXT,
                     validation_score REAL NOT NULL,
                     created_at TEXT NOT NULL,
-                    slides_json TEXT NOT NULL
+                    slides_json TEXT NOT NULL,
+                    ragflow_session_id TEXT
                 )
             """)
+            
+            # Migration check: check if ragflow_session_id column exists
+            cursor.execute("PRAGMA table_info(lessons)")
+            columns = [col[1] for col in cursor.fetchall()]
+            if "ragflow_session_id" not in columns:
+                cursor.execute("ALTER TABLE lessons ADD COLUMN ragflow_session_id TEXT")
             
             # Create assignments table
             cursor.execute("""
@@ -218,8 +225,8 @@ class LessonStorageService:
             # Insert or replace lesson
             cursor.execute("""
                 INSERT OR REPLACE INTO lessons 
-                (id, class_name, subject, topic, teacher_id, validation_score, created_at, slides_json)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (id, class_name, subject, topic, teacher_id, validation_score, created_at, slides_json, ragflow_session_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 lesson_id,
                 lesson.class_name,
@@ -228,7 +235,8 @@ class LessonStorageService:
                 lesson.teacher_id,
                 lesson.validation_score,
                 created_at,
-                slides_json
+                slides_json,
+                lesson.ragflow_session_id
             ))
             
             # Save assignment if provided
@@ -287,6 +295,9 @@ class LessonStorageService:
             # Parse datetime
             created_at = datetime.fromisoformat(row["created_at"])
             
+            col_list = row.keys()
+            ragflow_session_id = row["ragflow_session_id"] if "ragflow_session_id" in col_list else None
+            
             return Lesson(
                 id=row["id"],
                 class_name=row["class_name"],
@@ -295,7 +306,8 @@ class LessonStorageService:
                 teacher_id=row["teacher_id"],
                 validation_score=row["validation_score"],
                 created_at=created_at,
-                slides=slides
+                slides=slides,
+                ragflow_session_id=ragflow_session_id
             )
     
     async def get_assignment_for_lesson(self, lesson_id: str) -> Optional[Assignment]:
@@ -389,6 +401,9 @@ class LessonStorageService:
                 slides = [self._deserialize_slide(s) for s in slides_data]
                 created_at = datetime.fromisoformat(row["created_at"])
                 
+                col_list = row.keys()
+                ragflow_session_id = row["ragflow_session_id"] if "ragflow_session_id" in col_list else None
+                
                 lessons.append(Lesson(
                     id=row["id"],
                     class_name=row["class_name"],
@@ -397,7 +412,8 @@ class LessonStorageService:
                     teacher_id=row["teacher_id"],
                     validation_score=row["validation_score"],
                     created_at=created_at,
-                    slides=slides
+                    slides=slides,
+                    ragflow_session_id=ragflow_session_id
                 ))
             
             return lessons

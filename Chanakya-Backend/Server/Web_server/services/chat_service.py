@@ -54,9 +54,17 @@ class ChatService:
             if ragflow_session_id and session.ragflow_session_id != ragflow_session_id:
                 session.ragflow_session_id = ragflow_session_id
                 updated = True
-            if ragflow_context is not None and session.ragflow_context != ragflow_context:
-                session.ragflow_context = ragflow_context
-                updated = True
+            if ragflow_context:
+                if not session.ragflow_context:
+                    session.ragflow_context = {}
+                # Merge incoming non-None/non-empty values to prevent losing class/subject selections
+                merged = {**session.ragflow_context}
+                for k, v in ragflow_context.items():
+                    if v is not None and v != "":
+                        merged[k] = v
+                if session.ragflow_context != merged:
+                    session.ragflow_context = merged
+                    updated = True
             if updated:
                 await session.save()
         

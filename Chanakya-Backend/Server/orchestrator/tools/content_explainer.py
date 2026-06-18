@@ -69,6 +69,7 @@ class ContentExplainerTool(BaseTool):
     
     def __init__(
         self,
+        api_key: Optional[str] = None,
         model_name: str = "models/gemini-2.5-flash",
         top_k: int = 5,
         temperature: float = 0.3,
@@ -79,20 +80,20 @@ class ContentExplainerTool(BaseTool):
         Initialize the Content Explainer tool.
         """
         self.db = MockDatabase()
-        self.client = genai.Client(api_key=self._get_api_key())
+        self.client = genai.Client(api_key=self._get_api_key(api_key))
         self.model_name = model_name
         self.top_k = top_k
         self.temperature = temperature
         
         logger.info("ContentExplainerTool initialized with RAGFlow stateful Chat Assistant")
     
-    def _get_api_key(self) -> str:
-        """Get Gemini API key from environment."""
+    def _get_api_key(self, api_key: Optional[str] = None) -> str:
+        """Get API key from parameter or environment."""
         import os
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            raise ValueError("GEMINI_API_KEY environment variable not set")
-        return api_key
+        key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("OPENROUTER_API_KEY")
+        if not key:
+            raise ValueError("Neither GEMINI_API_KEY nor OPENROUTER_API_KEY environment variable is set")
+        return key
 
     async def run(self, query: str, context: Optional[dict] = None) -> dict:
         """
@@ -122,21 +123,47 @@ class ContentExplainerTool(BaseTool):
             # Import ragflow_service
             from services.ragflow_v2 import ragflow_service
             
-            # 1. List existing RAGFlow sessions
-            sessions = await asyncio.to_thread(ragflow_service.list_sessions)
+            # Try lookup in MongoDB ChatSession
             ragflow_session_id = None
-            for s in sessions:
-                if s.get("name") == fastapi_session_id:
-                    ragflow_session_id = s.get("id")
-                    break
-                    
-            # 2. If not found, create new session in RAGFlow
+            chat_session = None
+            try:
+                from models.chat_session import ChatSession as MongoChatSession
+                chat_session = await MongoChatSession.find_one(MongoChatSession.session_id == fastapi_session_id)
+                if chat_session and chat_session.ragflow_session_id:
+                    ragflow_session_id = chat_session.ragflow_session_id
+                    logger.info(f"Retrieved existing ragflow_session_id from MongoDB: {ragflow_session_id}")
+            except Exception as db_err:
+                logger.warning(f"MongoDB/Beanie not initialized or lookup failed: {db_err}")
+            
+            # Fallback to listing RAGFlow sessions
             if not ragflow_session_id:
-                logger.info(f"Creating new RAGFlow chat session for: '{fastapi_session_id}'")
+                sessions = await asyncio.to_thread(ragflow_service.list_sessions)
+                for s in sessions:
+                    if s.get("name") == fastapi_session_id:
+                        ragflow_session_id = s.get("id")
+                        break
+            
+            # If not found, create new session in RAGFlow
+            if not ragflow_session_id:
+                if chat_session and chat_session.title and chat_session.title != "New Chat":
+                    session_name = chat_session.title
+                else:
+                    session_name = f"Chat: {query[:50]}"
+                
+                logger.info(f"Creating new RAGFlow chat session for: '{session_name}'")
                 ragflow_session_id = await asyncio.to_thread(
                     ragflow_service.create_new_session,
-                    name=fastapi_session_id
+                    name=session_name
                 )
+                
+                # Save new ragflow_session_id to MongoDB
+                if ragflow_session_id and chat_session:
+                    try:
+                        chat_session.ragflow_session_id = ragflow_session_id
+                        await chat_session.save()
+                        logger.info(f"Saved new ragflow_session_id {ragflow_session_id} to MongoDB for session {fastapi_session_id}")
+                    except Exception as save_err:
+                        logger.error(f"Failed to save ragflow_session_id to MongoDB: {save_err}")
             
             if not ragflow_session_id:
                 raise Exception("Failed to get or create RAGFlow chat session")
@@ -157,9 +184,36 @@ class ContentExplainerTool(BaseTool):
             assistant_response = resp.get("data", {}).get("answer", "")
             chunks = resp.get("data", {}).get("reference", {}).get("chunks", []) or []
             
+            # Filter chunks based on similarity threshold >= 0.4
+            valid_chunks = []
+            for chunk in chunks:
+                score = chunk.get("similarity") or chunk.get("similarity_score") or chunk.get("score")
+                if score is not None:
+                    try:
+                        if float(score) >= 0.4:
+                            valid_chunks.append(chunk)
+                    except ValueError:
+                        valid_chunks.append(chunk)
+                else:
+                    valid_chunks.append(chunk)
+            
+            # If no relevant chunks are found, return strict refusal directly
+            if not valid_chunks:
+                logger.info("No relevant chunks found in textbook retrieval. Returning refusal to avoid general Gen AI fallback.")
+                return {
+                    "explanation": "I couldn't find any relevant content in the textbooks to answer this query.",
+                    "key_points": [],
+                    "examples": [],
+                    "sources": [],
+                    "confidence": 1.0,
+                    "coverage": "complete",
+                    "retrieved_passages": 1,
+                    "filters_applied": filters if filters else None
+                }
+            
             # 5. Format retrieved sources for prompt
             formatted_sources = []
-            for i, chunk in enumerate(chunks, 1):
+            for i, chunk in enumerate(valid_chunks, 1):
                 doc_name = chunk.get("document_name") or chunk.get("source") or f"Doc_{i}"
                 content = chunk.get("content") or chunk.get("text") or ""
                 formatted_sources.append(f"[{i}] Source: {doc_name}\nContent: {content}\n")
@@ -191,7 +245,7 @@ class ContentExplainerTool(BaseTool):
                 result["coverage"] = "complete"
             
             # Add metadata (must be at least 1 to prevent fallback)
-            result["retrieved_passages"] = max(1, len(chunks))
+            result["retrieved_passages"] = max(1, len(valid_chunks))
             result["filters_applied"] = filters if filters else None
             
             logger.info(f"ContentExplainer completed with confidence: {result.get('confidence', 0.0)}")

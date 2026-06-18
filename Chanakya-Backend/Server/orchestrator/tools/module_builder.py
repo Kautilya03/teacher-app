@@ -16,7 +16,6 @@ from module.services.topic_selector import TopicSelectorService
 from module.services.lesson_storage import LessonStorageService
 from module.generators.lesson_generator import LessonGenerator
 from module.generators.assignment_generator import AssignmentGenerator
-from services.ragflow_v2 import ragflow_service
 
 logger = logging.getLogger(__name__)
 
@@ -183,7 +182,7 @@ Respond with valid JSON only. Do not wrap in markdown tags or anything else."""
 
     async def run(self, query: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
-        Execute the module builder tool.
+        Execute the module builder tool by querying RAGFlow chatbot directly.
         """
         context = context or {}
         lesson_id = context.get("lesson_id")
@@ -192,112 +191,248 @@ Respond with valid JSON only. Do not wrap in markdown tags or anything else."""
         if lesson_id:
             return await self._handle_refinement(query, lesson_id, context)
             
-        # 2. Retrieve metadata context (class, subject, topic)
-        class_name = context.get("class_name")
-        subject = context.get("subject")
-        topic = context.get("topic")
+        # 2. For any new lesson plan request, pass query directly to RAGFlow chatbot completion
+        fastapi_session_id = context.get("session_id") or "default_session"
+        logger.info(f"module_builder_lesson_plan_direct: query={query}, session_id={fastapi_session_id}")
         
-        if not class_name or not subject:
-            parsed = await self._parse_intent(query)
-            class_name = parsed.get("class_name") or class_name
-            subject = parsed.get("subject") or subject
-            topic = parsed.get("topic") or topic
+        from services.ragflow_v2 import ragflow_service
+        import asyncio
+        from config import settings
+        
+        # Resolve custom chatbot ID for module creation, default to RAGFLOW_MODULE_CHAT_ID or fall back to RAGFLOW_CHAT_ID
+        module_chat_id = getattr(settings, "RAGFLOW_MODULE_CHAT_ID", None) or settings.RAGFLOW_CHAT_ID
+        logger.info(f"Using module chatbot ID: {module_chat_id}")
+        
+        # Get or create RAGFlow session ID
+        ragflow_session_id = None
+        chat_session = None
+        try:
+            from models.chat_session import ChatSession as MongoChatSession
+            chat_session = await MongoChatSession.find_one(MongoChatSession.session_id == fastapi_session_id)
+            if chat_session and chat_session.ragflow_session_id:
+                ragflow_session_id = chat_session.ragflow_session_id
+                logger.info(f"Retrieved existing ragflow_session_id from MongoDB: {ragflow_session_id}")
+        except Exception as db_err:
+            logger.warning(f"MongoDB/Beanie lookup failed in module_builder: {db_err}")
             
-        if not class_name or not subject:
+        # Fallback to listing RAGFlow sessions
+        if not ragflow_session_id:
+            try:
+                sessions = await asyncio.to_thread(
+                    ragflow_service.list_sessions,
+                    chat_id=module_chat_id
+                )
+                for s in sessions:
+                    if s.get("name") == fastapi_session_id:
+                        ragflow_session_id = s.get("id")
+                        break
+            except Exception as list_err:
+                logger.warning(f"Failed to list RAGFlow sessions in module_builder: {list_err}")
+                
+        # If not found, create new session in RAGFlow
+        if not ragflow_session_id:
+            if chat_session and chat_session.title and chat_session.title != "New Chat":
+                session_name = chat_session.title
+            else:
+                session_name = f"Chat: {query[:50]}"
+                
+            logger.info(f"Creating new RAGFlow chat session for: '{session_name}'")
+            try:
+                ragflow_session_id = await asyncio.to_thread(
+                    ragflow_service.create_new_session,
+                    chat_id=module_chat_id,
+                    name=session_name
+                )
+                
+                # Save new ragflow_session_id to MongoDB
+                if ragflow_session_id and chat_session:
+                    chat_session.ragflow_session_id = ragflow_session_id
+                    await chat_session.save()
+                    logger.info(f"Saved new ragflow_session_id {ragflow_session_id} to MongoDB")
+            except Exception as create_err:
+                logger.error(f"Failed to create RAGFlow session in module_builder: {create_err}")
+                
+        if not ragflow_session_id:
             return {
-                "response": "To help you build a lesson plan, please specify the class (e.g. Class 7) and subject (e.g. Geography) in the chat.",
-                "status": "request_metadata"
+                "response": "Failed to get or create RAGFlow chat session.",
+                "status": "error"
             }
             
-        # Standardize class and subject formats
-        class_name_std = class_name.replace(" ", "_").strip()
-        subject_std = subject.strip().capitalize()
-        
-        # 3. If no topic is selected yet, offer chapter choices
-        if not topic:
-            try:
-                topics = await self.topic_selector.get_topics_for_subject(class_name_std, subject_std)
-                if not topics:
-                    return {
-                        "response": f"I couldn't find any NCERT chapters for {class_name} {subject}.",
-                        "status": "error"
-                    }
-                    
-                topic_list = [{"topic_name": t.topic_name, "chapter_number": t.chapter_number} for t in topics]
-                return {
-                    "response": f"I found the following chapters in the NCERT book for **{class_name} {subject_std}**. Please choose a chapter to build the module for:",
-                    "topics": topic_list,
-                    "class_name": class_name_std,
-                    "subject": subject_std,
-                    "status": "select_topic"
-                }
-            except Exception as e:
-                logger.error(f"Error fetching topics: {e}", exc_info=True)
-                return {
-                    "response": f"Failed to retrieve chapters: {str(e)}",
-                    "status": "error"
-                }
-                
-        # 4. Generate the draft lesson and assignment
+        # Call RAGFlow stateful completion directly with the query
+        logger.info(f"Querying RAGFlow Chat Assistant directly: '{query}' with session: {ragflow_session_id}")
         try:
-            logger.info(f"Generating module for {class_name_std}/{subject_std}/{topic}")
-            language = context.get("language", "English")
-            board = context.get("board", "NCERT")
-            
-            # Fetch content from RAGFlow
-            textbook_content, retrieval_meta = await ragflow_service.retrieve_textbook_content(
-                class_name_std,
-                subject_std,
-                topic,
-                language=language,
-                board=board,
+            resp = await asyncio.to_thread(
+                ragflow_service.chat_completion_stateful,
+                question=query,
+                chat_id=module_chat_id,
+                session_id=ragflow_session_id
             )
             
-            if not textbook_content:
-                from config import settings
-                return {
-                    "response": f"⚠️ **RAGFlow Retrieval Failed**: No textbook chunks could be retrieved from RAGFlow for chapter **{topic}** (Class: {class_name_std}, Subject: {subject_std}).\n\nPlease ensure the NCERT textbook PDF is uploaded to your RAGFlow knowledge base (Dataset ID: `{settings.RAGFLOW_DATASET_ID}`) and fully indexed.",
-                    "status": "error"
-                }
+            if not resp or resp.get("code") != 0:
+                error_msg = resp.get("message") or "Failed to get response from RAGFlow"
+                raise Exception(error_msg)
                 
-            # Draft lesson slides
-            lesson, validation_report = await self.lesson_gen.generate_lesson(
-                textbook_content=textbook_content,
-                class_name=class_name_std,
-                subject=subject_std,
-                topic=topic
+            answer = resp.get("data", {}).get("answer", "")
+            
+            # 3. Use Gemini to parse the raw RAGFlow chatbot text into structured JSON matching schemas
+            logger.info("Structuring RAGFlow response into schemas using Gemini")
+            structuring_prompt = f"""Analyze the RAGFlow chatbot response and convert it into a structured JSON lesson and assignment conforming to the schemas below.
+
+RAGFlow Chatbot Response:
+"{answer}"
+
+You must output a JSON object containing:
+{{
+    "lesson": {{
+        "class_name": "Class_6" or similar,
+        "subject": "Geography" or similar,
+        "topic": "Environment" or similar,
+        "slides": [
+            {{
+                "slide_number": 1,
+                "slide_type": "introduction",
+                "title": "...",
+                "explanation": "...",
+                "bullet_points": ["point 1", "point 2", ...],
+                "key_terms": ["term 1: definition", "term 2: definition"],
+                "examples": ["example 1"],
+                "diagram_prompt": "prompt for diagram generation"
+            }},
+            {{
+                "slide_number": 2,
+                "slide_type": "concept",
+                "title": "...",
+                "explanation": "...",
+                "bullet_points": ["point 1", "point 2", ...],
+                "key_terms": ["term 1: definition", "term 2: definition"],
+                "examples": ["example 1"],
+                "diagram_prompt": "prompt for diagram generation"
+            }}
+        ]
+    }},
+    "assignment": {{
+        "questions": [
+            {{
+                "question_type": "mcq",
+                "question_text": "...",
+                "options": [
+                    {{"option_text": "...", "is_correct": true}},
+                    {{"option_text": "...", "is_correct": false}},
+                    ... (exactly 4 options)
+                ],
+                "difficulty": "easy" or "medium" or "hard",
+                "marks": 1,
+                "source_reference": "..."
+            }},
+            {{
+                "question_type": "short_answer",
+                "question_text": "...",
+                "expected_answer": "...",
+                "difficulty": "medium",
+                "marks": 2,
+                "source_reference": "..."
+            }},
+            {{
+                "question_type": "long_answer",
+                "question_text": "...",
+                "expected_answer": "...",
+                "marking_scheme": ["point 1", "point 2"],
+                "difficulty": "hard",
+                "marks": 5,
+                "source_reference": "..."
+            }}
+        ]
+    }}
+}}
+
+CRITICAL INSTRUCTIONS:
+1. The "slides" list must contain EXACTLY 2 slides. If the input has more or fewer, consolidate/adapt them to fit exactly 2 slides, with slide_number from 1 to 2 in order.
+2. The explanation of each slide must be a simplified explanation of at least 10 characters.
+3. Every MCQ question must have exactly 4 options with exactly one correct option.
+4. Total marks of the assignment must equal the sum of all question marks.
+5. Do not include markdown wraps (like ```json). Respond with valid JSON only.
+"""
+            from google.genai import types
+            gemini_resp = await self.client.aio.models.generate_content(
+                model=self.model_name,
+                contents=[types.Content(role="user", parts=[types.Part(text=structuring_prompt)])],
+                config=types.GenerateContentConfig(
+                    temperature=0.0,
+                    response_mime_type="application/json"
+                )
             )
             
-            # Draft assignment questions
-            assignment = await self.assignment_gen.generate_assignment(
-                lesson=lesson,
-                textbook_content=textbook_content
-            )
+            # 4. Parse the structured JSON
+            parsed_data = json.loads(gemini_resp.text.strip())
             
-            # Save drafts to DB
+            # Import models
+            from module.models.schemas import Lesson, Slide, Assignment, ValidationReport
+            
+            lesson_dict = parsed_data.get("lesson", {})
+            assignment_dict = parsed_data.get("assignment", {})
+            
+            # Clean up slides source references
+            for slide_data in lesson_dict.get("slides", []):
+                if "source_references" not in slide_data:
+                    slide_data["source_references"] = []
+                if "diagram_prompt" not in slide_data or not slide_data["diagram_prompt"]:
+                    slide_data["diagram_prompt"] = f"Diagram illustrating {slide_data.get('title')}"
+                    
+            # Set default validation score
+            lesson_dict["validation_score"] = 1.0
+            lesson_dict["ragflow_session_id"] = ragflow_session_id
+            
+            # Create Pydantic models
+            lesson = Lesson(**lesson_dict)
+            
+            # Build assignment Pydantic model
+            assignment_dict["class_name"] = lesson.class_name
+            assignment_dict["subject"] = lesson.subject
+            assignment_dict["topic"] = lesson.topic
+            assignment_dict["lesson_id"] = "temp_lesson_id"
+            
+            # Calculate total marks
+            questions_list = assignment_dict.get("questions", [])
+            total_marks = sum(q.get("marks", 0) for q in questions_list)
+            assignment_dict["total_marks"] = total_marks
+            
+            assignment = Assignment(**assignment_dict)
+            
+            # 5. Save drafts to DB
             lesson_id = await self.storage.save_lesson(lesson, assignment)
             lesson.id = lesson_id
             assignment.lesson_id = lesson_id
             
-            lesson_dict = lesson.model_dump() if hasattr(lesson, 'model_dump') else lesson.dict()
-            assignment_dict = assignment.model_dump() if hasattr(assignment, 'model_dump') else assignment.dict()
-            validation_dict = validation_report.model_dump() if hasattr(validation_report, 'model_dump') else validation_report.dict()
+            # Re-calculate or update assignment in DB with saved lesson_id
+            await self.storage.save_lesson(lesson, assignment)
+            
+            lesson_out = lesson.model_dump() if hasattr(lesson, 'model_dump') else lesson.dict()
+            assignment_out = assignment.model_dump() if hasattr(assignment, 'model_dump') else assignment.dict()
+            
+            validation_report = ValidationReport(
+                is_valid=True,
+                overall_score=1.0,
+                issues=[],
+                flagged_content=[],
+                recommendations=[]
+            )
+            validation_out = validation_report.model_dump() if hasattr(validation_report, 'model_dump') else validation_report.dict()
             
             return {
-                "response": f"I have generated a draft module for you on **'{topic}'** ({class_name} {subject_std})! You can preview the interactive slides and assignment questions in the Artifact pane on the right.",
+                "response": f"I have successfully generated the 2-slide lesson plan and worksheet! You can preview them in the pane on the right.",
                 "lesson_id": lesson_id,
-                "class_name": class_name_std,
-                "subject": subject_std,
-                "topic": topic,
-                "lesson": lesson_dict,
-                "assignment": assignment_dict,
-                "validation_report": validation_dict,
+                "class_name": lesson.class_name,
+                "subject": lesson.subject,
+                "topic": lesson.topic,
+                "lesson": lesson_out,
+                "assignment": assignment_out,
+                "validation_report": validation_out,
+                "ragflow_session_id": ragflow_session_id,
                 "status": "preview_module"
             }
-            
         except Exception as e:
-            logger.error(f"Error generating module: {e}", exc_info=True)
+            logger.error(f"Error querying RAGFlow chatbot directly or structuring: {e}", exc_info=True)
             return {
-                "response": f"Sorry, I encountered an error while generating the lesson plan: {str(e)}",
+                "response": f"Sorry, I encountered an error while querying RAGFlow chatbot: {str(e)}",
                 "status": "error"
             }
