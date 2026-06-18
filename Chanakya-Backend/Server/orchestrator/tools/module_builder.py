@@ -80,7 +80,7 @@ class ModuleBuilderTool:
             return {}
 
     async def _handle_refinement(self, query: str, lesson_id: str, context: dict) -> dict:
-        """Apply slide or question edits requested by the user to the existing lesson draft."""
+        """Apply slide or question edits requested by the user by querying the RAGFlow session and creating a new module draft."""
         try:
             lesson = await self.storage.get_lesson(lesson_id)
             if not lesson:
@@ -89,92 +89,134 @@ class ModuleBuilderTool:
                     "status": "error"
                 }
             
-            assignment = await self.storage.get_assignment_for_lesson(lesson_id)
+            from services.ragflow_v2 import ragflow_service
+            from config import settings
+            import asyncio
             
-            # Use Gemini to edit slides or assignment based on user request
-            prompt = f"""You are an editor for an interactive educational module.
-The user wants to refine/modify the lesson or the assignment.
-
-CURRENT LESSON STATE (JSON):
-{json.dumps(lesson.model_dump() if hasattr(lesson, 'model_dump') else lesson.dict(), indent=2)}
-
-CURRENT ASSIGNMENT STATE (JSON):
-{json.dumps(assignment.model_dump() if hasattr(assignment, 'model_dump') else assignment.dict(), indent=2) if assignment else "None"}
-
-USER REFINEMENT REQUEST:
-"{query}"
-
-Apply the edits. You must keep all unchanged parts intact. You must output the modified lesson and/or assignment conforming EXACTLY to the structure of the input JSON.
-
-If the user request is related to changing slides, modify only the lesson.
-If the user request is related to changing questions/assignment, modify only the assignment.
-If both need updating, modify both.
-For the elements you did NOT modify, return them as they were.
-
-Make sure total_marks in assignment matches the sum of the marks of all questions.
-Each MCQ question must have exactly 4 options with exactly one correct option.
-Each slide must be structured exactly like the current state slides.
-
-Return a JSON object containing:
-{{
-    "updated_element": "lesson" or "assignment" or "both",
-    "lesson": <updated lesson object matching the input schema>,
-    "assignment": <updated assignment object matching the input schema if present, else null>,
-    "explanation": "Brief explanation of what was updated"
-}}
-
-Respond with valid JSON only. Do not wrap in markdown tags or anything else."""
-
-            response = await self.client.aio.models.generate_content(
-                model=self.model_name,
-                contents=[types.Content(role="user", parts=[types.Part(text=prompt)])],
-                config=types.GenerateContentConfig(
-                    temperature=0.1,
-                    response_mime_type="application/json"
-                )
+            # Resolve custom chatbot ID for module creation, default to RAGFLOW_MODULE_CHAT_ID or fall back to RAGFLOW_CHAT_ID
+            module_chat_id = getattr(settings, "RAGFLOW_MODULE_CHAT_ID", None) or settings.RAGFLOW_CHAT_ID
+            
+            ragflow_session_id = lesson.ragflow_session_id
+            
+            # If ragflow_session_id is missing, create a new one to proceed
+            if not ragflow_session_id:
+                session_name = f"Lesson: {lesson.class_name} - {lesson.subject} - {lesson.topic}"
+                logger.info(f"Creating new RAGFlow chat session for refinement as it was missing: '{session_name}'")
+                try:
+                    ragflow_session_id = await asyncio.to_thread(
+                        ragflow_service.create_new_session,
+                        chat_id=module_chat_id,
+                        name=session_name
+                    )
+                except Exception as create_err:
+                    logger.error(f"Failed to create RAGFlow session in refinement: {create_err}")
+            
+            if not ragflow_session_id:
+                return {
+                    "response": "Failed to get or create RAGFlow chat session for editing this lesson.",
+                    "status": "error"
+                }
+            
+            # Query the RAGFlow Chat assistant stateful completion directly with the query
+            logger.info(f"Refinement query to RAGFlow Chat Assistant: '{query}' with session: {ragflow_session_id}")
+            resp = await asyncio.to_thread(
+                ragflow_service.chat_completion_stateful,
+                question=query,
+                chat_id=module_chat_id,
+                session_id=ragflow_session_id
             )
             
-            result = json.loads(response.text.strip())
-            explanation = result.get("explanation", "Updated the module successfully.")
-            
-            updated_lesson_dict = result.get("lesson")
-            updated_assignment_dict = result.get("assignment")
-            
-            from module.models.schemas import Lesson, Assignment
-            
-            if updated_lesson_dict:
-                updated_lesson_dict["id"] = lesson_id
-                if "created_at" not in updated_lesson_dict:
-                    updated_lesson_dict["created_at"] = lesson.created_at.isoformat()
-                lesson = Lesson(**updated_lesson_dict)
+            if not resp or resp.get("code") != 0:
+                error_msg = resp.get("message") or "Failed to get response from RAGFlow"
+                raise Exception(error_msg)
                 
-            if updated_assignment_dict:
-                updated_assignment_dict["lesson_id"] = lesson_id
-                if "id" not in updated_assignment_dict:
-                    updated_assignment_dict["id"] = assignment.id if assignment else None
-                if "created_at" not in updated_assignment_dict:
-                    updated_assignment_dict["created_at"] = assignment.created_at.isoformat() if assignment else None
-                
-                # Re-calculate total marks
-                questions = updated_assignment_dict.get("questions", [])
-                total_marks = sum(q.get("marks", 0) for q in questions)
-                updated_assignment_dict["total_marks"] = total_marks
-                
-                assignment = Assignment(**updated_assignment_dict)
+            answer = resp.get("data", {}).get("answer", "")
             
-            # Save updates
-            await self.storage.save_lesson(lesson, assignment)
+            # Print the true response of RAGFlow to the terminal
+            print("\n" + "="*60)
+            print("[TRUE RAGFLOW REFINEMENT RESPONSE]")
+            print(answer)
+            print("="*60 + "\n")
+            
+            # Parse the RAGFlow markdown response into structured JSON using the regex/markdown parser
+            from module.services.markdown_parser import parse_markdown_to_module
+            parsed_data = parse_markdown_to_module(answer)
+            
+            # Import models
+            from module.models.schemas import Lesson, Slide, Assignment, ValidationReport
+            
+            lesson_dict = parsed_data.get("lesson", {})
+            assignment_dict = parsed_data.get("assignment", {})
+            
+            # Clean up slides source references
+            for slide_data in lesson_dict.get("slides", []):
+                if "source_references" not in slide_data:
+                    slide_data["source_references"] = []
+                if "diagram_prompt" not in slide_data or not slide_data["diagram_prompt"]:
+                    slide_data["diagram_prompt"] = f"Diagram illustrating {slide_data.get('title')}"
+                    
+            # Set default validation score
+            lesson_dict["validation_score"] = 1.0
+            lesson_dict["ragflow_session_id"] = ragflow_session_id
+            
+            # Create Pydantic models
+            new_lesson = Lesson(**lesson_dict)
+            
+            # Build assignment Pydantic model
+            assignment_dict["class_name"] = new_lesson.class_name
+            assignment_dict["subject"] = new_lesson.subject
+            assignment_dict["topic"] = new_lesson.topic
+            assignment_dict["lesson_id"] = "temp_lesson_id"
+            
+            # Calculate total marks
+            questions_list = assignment_dict.get("questions", [])
+            total_marks = sum(q.get("marks", 0) for q in questions_list)
+            assignment_dict["total_marks"] = total_marks
+            
+            new_assignment = Assignment(**assignment_dict)
+            
+            # Save new module draft to DB
+            new_lesson_id = await self.storage.save_lesson(new_lesson, new_assignment)
+            new_lesson.id = new_lesson_id
+            new_assignment.lesson_id = new_lesson_id
+            
+            # Re-calculate or update assignment in DB with saved lesson_id
+            await self.storage.save_lesson(new_lesson, new_assignment)
+            
+            if hasattr(new_lesson, 'model_dump'):
+                lesson_out = new_lesson.model_dump(mode="json")
+                assignment_out = new_assignment.model_dump(mode="json")
+            else:
+                lesson_out = json.loads(new_lesson.json())
+                assignment_out = json.loads(new_assignment.json())
+            
+            validation_report = ValidationReport(
+                is_valid=True,
+                overall_score=1.0,
+                issues=[],
+                flagged_content=[],
+                recommendations=[]
+            )
+            if hasattr(validation_report, 'model_dump'):
+                validation_out = validation_report.model_dump(mode="json")
+            else:
+                validation_out = json.loads(validation_report.json())
             
             return {
-                "response": f"Refined successfully: {explanation}. The preview has been updated.",
-                "lesson_id": lesson_id,
-                "lesson": lesson.model_dump() if hasattr(lesson, 'model_dump') else lesson.dict(),
-                "assignment": assignment.model_dump() if hasattr(assignment, 'model_dump') else assignment.dict() if assignment else None,
+                "response": "I have successfully updated the lesson plan and worksheet! You can preview them in the pane on the right.",
+                "lesson_id": new_lesson_id,
+                "class_name": new_lesson.class_name,
+                "subject": new_lesson.subject,
+                "topic": new_lesson.topic,
+                "lesson": lesson_out,
+                "assignment": assignment_out,
+                "validation_report": validation_out,
+                "ragflow_session_id": ragflow_session_id,
                 "status": "preview_module"
             }
             
         except Exception as e:
-            logger.error(f"Error refining module: {e}", exc_info=True)
+            logger.error(f"Error refining module via RAGFlow: {e}", exc_info=True)
             return {
                 "response": f"Failed to apply refinements: {str(e)}",
                 "status": "error"

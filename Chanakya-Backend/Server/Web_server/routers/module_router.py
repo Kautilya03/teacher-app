@@ -313,8 +313,10 @@ async def generate_lesson(request: LessonGenerationRequest):
         try:
             session_name = f"Lesson: {request.class_name} - {request.subject} - {request.topic}"
             logger.info(f"Creating new RAGFlow chat session for lesson: '{session_name}'")
+            module_chat_id = getattr(settings, "RAGFLOW_MODULE_CHAT_ID", None) or settings.RAGFLOW_CHAT_ID
             ragflow_session_id = await asyncio.to_thread(
                 ragflow_service.create_new_session,
+                chat_id=module_chat_id,
                 name=session_name
             )
             logger.info(f"Successfully created RAGFlow chat session with ID: {ragflow_session_id}")

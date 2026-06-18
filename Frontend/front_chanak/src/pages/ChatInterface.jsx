@@ -394,9 +394,9 @@ function ChatInterface() {
           quick_answer_mode: quickAnswerMode,
         };
         if (attachedDocumentId) context.document_id = attachedDocumentId;
-        if (chatMode === "module_builder") {
-          context.selected_tool = "module_builder";
-          if (activeLessonId) {
+        if (chatMode !== "general") {
+          context.selected_tool = chatMode;
+          if (chatMode === "module_builder" && activeLessonId) {
             context.lesson_id = activeLessonId;
           }
         }
@@ -979,7 +979,16 @@ function ChatInterface() {
                       onClick={() => {
                         if (feature.name === "Module Creator") {
                           setChatMode("module_builder");
-                          setInput("Create a module for class 7 geography");
+                          setInput("Create a module for Class 7 Geography");
+                        } else if (feature.name === "Crisis-Handling Mode") {
+                          setChatMode("crisis_handler");
+                          setInput("A student is throwing tantrums in class. How should I respond?");
+                        } else if (feature.name === "Activity Generator") {
+                          setChatMode("activity_generator");
+                          setInput("Generate a classroom activity for Class 8 Mathematics");
+                        } else if (feature.name === "Post-class Planner") {
+                          setChatMode("classroom_guidance");
+                          setInput("I just finished teaching algebra. Plan my next reflection and guidance.");
                         } else {
                           setInput(`Activate ${feature.name}`);
                         }
@@ -1445,6 +1454,24 @@ function ChatInterface() {
                           if (!input.trim()) {
                             setInput("Create a module for Class 7 Geography");
                           }
+                        } else if (mode === "crisis_handler") {
+                          setInput("A student is throwing tantrums in class. How should I respond?");
+                        } else if (mode === "activity_generator") {
+                          setInput("Generate a classroom activity for Class 8 Mathematics");
+                        } else if (mode === "classroom_guidance") {
+                          setInput("I just finished teaching algebra. Plan my next reflection and guidance.");
+                        } else if (mode === "teacher_motivation") {
+                          setInput("I am feeling a bit burned out today. Give me some encouragement.");
+                        } else if (mode === "content_explainer") {
+                          setInput("Explain the process of photosynthesis for class 6 students.");
+                        } else if (mode === "expert_teacher") {
+                          setInput("How do you teach quantum physics concepts to high schoolers?");
+                        } else if (mode === "quick_answer") {
+                          setInput("What is the capital of France?");
+                        } else if (mode === "resource_finder") {
+                          setInput("Find educational resources on Newtonian mechanics.");
+                        } else if (mode === "feedback_response") {
+                          setInput("The student did well but struggled with fractions.");
                         }
                       }}
                       className="px-3 py-1.5 border-2 border-[#000000] rounded-lg font-bold text-sm bg-white text-[#000000] transition-all shadow-[2px_2px_0px_0px_#000000] hover:shadow-[1px_1px_0px_0px_#000000] focus:outline-none cursor-pointer"
@@ -1452,6 +1479,15 @@ function ChatInterface() {
                     >
                       <option value="general">💬 General Assistant</option>
                       <option value="module_builder">📚 Module Creator</option>
+                      <option value="activity_generator">🪁 Activity Generator</option>
+                      <option value="crisis_handler">🚨 Crisis Handler</option>
+                      <option value="teacher_motivation">💪 Teacher Motivation</option>
+                      <option value="content_explainer">📖 Content Explainer</option>
+                      <option value="classroom_guidance">🏫 Classroom Guidance</option>
+                      <option value="expert_teacher">🎓 Expert Teacher</option>
+                      <option value="quick_answer">⚡ Quick Answer</option>
+                      <option value="resource_finder">🔍 Resource Finder</option>
+                      <option value="feedback_response">💬 Feedback Response</option>
                     </select>
                   </div>
 

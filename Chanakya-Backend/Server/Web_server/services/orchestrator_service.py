@@ -159,7 +159,85 @@ class OrchestratorService:
                     error=str(e),
                 )
         
-        # Return cached response for repeated identical query (no LLM call)
+        # Direct Tool Selection (Bypass Orchestrator Routing/Graph)
+        selected_tool = getattr(query_request, "selected_tool", None) or (query_request.context and query_request.context.get("selected_tool"))
+        if selected_tool:
+            if selected_tool == "general":
+                selected_tool = "general_conversation"
+                
+            start_time = time.time()
+            try:
+                logger.info(
+                    "Direct tool execution (bypassing orchestrator)",
+                    tool=selected_tool,
+                    query=query_request.query[:100],
+                    session_id=query_request.session_id
+                )
+                
+                if selected_tool not in self.orchestrator.tools:
+                    raise ValueError(f"Unknown tool requested: {selected_tool}")
+                
+                tool = self.orchestrator.tools[selected_tool]
+                
+                # Setup context
+                context = dict(query_request.context or {})
+                context['session_id'] = query_request.session_id or "default"
+                if getattr(query_request, "document_id", None):
+                    context["document_id"] = query_request.document_id
+                
+                # Save user message to database history
+                if query_request.session_id and self.orchestrator.storage:
+                    await self.orchestrator.storage.add_message(query_request.session_id, "user", query_request.query)
+                
+                # Run the tool directly
+                result = await tool.run(query_request.query, context)
+                
+                # Serialize result properly
+                result_dict = result
+                if hasattr(result, 'model_dump'):
+                    result_dict = result.model_dump()
+                elif hasattr(result, 'dict'):
+                    result_dict = result.dict()
+                elif not isinstance(result_dict, dict):
+                    result_dict = {"response": str(result_dict)}
+                
+                # Save assistant message to database history
+                if query_request.session_id and self.orchestrator.storage:
+                    assistant_message = result_dict.get("response") or result_dict.get("explanation") or result_dict.get("description") or f"Generated {selected_tool}"
+                    metadata = {
+                        "tool_used": selected_tool,
+                        "reasoning": f"Bypassed orchestrator: ran {selected_tool} directly",
+                        "confidence": 1.0,
+                        "result": result_dict,
+                        "timestamp": datetime.utcnow().isoformat()
+                    }
+                    await self.orchestrator.storage.add_message(query_request.session_id, "assistant", assistant_message, metadata=metadata)
+                
+                processing_time_ms = (time.time() - start_time) * 1000
+                
+                return QueryResponse(
+                    success=True,
+                    tool_used=selected_tool,
+                    reasoning=f"Bypassed orchestrator: ran {selected_tool} directly",
+                    result=result_dict,
+                    confidence=1.0,
+                    processing_time_ms=processing_time_ms,
+                    timestamp=datetime.utcnow(),
+                    error=None
+                )
+            except Exception as e:
+                processing_time_ms = (time.time() - start_time) * 1000
+                logger.error(f"Direct tool execution failed: {e}", exc_info=True)
+                return QueryResponse(
+                    success=False,
+                    tool_used=selected_tool,
+                    reasoning=f"Bypassed orchestrator: direct execution of {selected_tool} failed",
+                    result={"error": str(e)},
+                    confidence=0.0,
+                    processing_time_ms=processing_time_ms,
+                    timestamp=datetime.utcnow(),
+                    error=str(e)
+                )
         if self._cache_enabled and self._query_cache is not None:
             key = _query_cache_key(query_request)
             with self._cache_lock:
