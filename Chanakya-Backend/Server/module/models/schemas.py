@@ -90,7 +90,7 @@ class Lesson(BaseModel):
     class_name: str = Field(..., description="Class/grade level", min_length=1)
     subject: str = Field(..., description="Subject name", min_length=1)
     topic: str = Field(..., description="Topic/chapter name", min_length=1)
-    slides: List[Slide] = Field(..., description="Exactly 2 slides")
+    slides: List[Slide] = Field(..., description="Up to 8 slides")
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     teacher_id: Optional[str] = Field(None, description="ID of teacher who created this")
     validation_score: float = Field(..., ge=0.0, le=1.0, description="Hallucination check score")
@@ -98,15 +98,15 @@ class Lesson(BaseModel):
 
     @field_validator('slides')
     @classmethod
-    def validate_exactly_2_slides(cls, v: List[Slide]) -> List[Slide]:
-        """Ensure lesson has exactly 2 slides."""
-        if len(v) != 2:
-            raise ValueError(f"Lesson must have exactly 2 slides, got {len(v)}")
+    def validate_up_to_8_slides(cls, v: List[Slide]) -> List[Slide]:
+        """Ensure lesson has between 1 and 8 slides."""
+        if not (1 <= len(v) <= 8):
+            raise ValueError(f"Lesson must have between 1 and 8 slides, got {len(v)}")
         return v
 
     @model_validator(mode='after')
     def validate_slide_numbers(self) -> 'Lesson':
-        """Ensure slides are numbered 1-2 in order."""
+        """Ensure slides are numbered sequentially starting from 1."""
         for i, slide in enumerate(self.slides, 1):
             if slide.slide_number != i:
                 raise ValueError(f"Slide {i} has incorrect slide_number: {slide.slide_number}")

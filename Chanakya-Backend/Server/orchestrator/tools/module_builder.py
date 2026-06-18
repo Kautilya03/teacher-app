@@ -52,19 +52,19 @@ class ModuleBuilderTool:
         """Parse class and subject from user's initiation request using Gemini."""
         prompt = f"""Analyze this user request for a lesson module and extract the target Class level, Subject area, and Chapter/Topic if specified.
         
-User Request: "{query}"
-
-Standardize class names as: Class_1, Class_2, ..., Class_12.
-Standardize subject names (e.g. Mathematics, Science, Social Science, Geography).
-
-Return a JSON object with:
-{{
-    "class_name": "Class_7" or null,
-    "subject": "Geography" or "Science" or null,
-    "topic": "Water" or "Photosynthesis" or null
-}}
-
-JSON:"""
+        User Request: "{query}"
+        
+        Standardize class names as: Class_1, Class_2, ..., Class_12.
+        Standardize subject names (e.g. Mathematics, Science, Social Science, Geography).
+        
+        Return a JSON object with:
+        {{
+            "class_name": "Class_7" or null,
+            "subject": "Geography" or "Science" or null,
+            "topic": "Water" or "Photosynthesis" or null
+        }}
+        
+        JSON:"""
         try:
             response = await self.client.aio.models.generate_content(
                 model=self.model_name,
@@ -274,96 +274,15 @@ Respond with valid JSON only. Do not wrap in markdown tags or anything else."""
                 
             answer = resp.get("data", {}).get("answer", "")
             
-            # 3. Use Gemini to parse the raw RAGFlow chatbot text into structured JSON matching schemas
-            logger.info("Structuring RAGFlow response into schemas using Gemini")
-            structuring_prompt = f"""Analyze the RAGFlow chatbot response and convert it into a structured JSON lesson and assignment conforming to the schemas below.
-
-RAGFlow Chatbot Response:
-"{answer}"
-
-You must output a JSON object containing:
-{{
-    "lesson": {{
-        "class_name": "Class_6" or similar,
-        "subject": "Geography" or similar,
-        "topic": "Environment" or similar,
-        "slides": [
-            {{
-                "slide_number": 1,
-                "slide_type": "introduction",
-                "title": "...",
-                "explanation": "...",
-                "bullet_points": ["point 1", "point 2", ...],
-                "key_terms": ["term 1: definition", "term 2: definition"],
-                "examples": ["example 1"],
-                "diagram_prompt": "prompt for diagram generation"
-            }},
-            {{
-                "slide_number": 2,
-                "slide_type": "concept",
-                "title": "...",
-                "explanation": "...",
-                "bullet_points": ["point 1", "point 2", ...],
-                "key_terms": ["term 1: definition", "term 2: definition"],
-                "examples": ["example 1"],
-                "diagram_prompt": "prompt for diagram generation"
-            }}
-        ]
-    }},
-    "assignment": {{
-        "questions": [
-            {{
-                "question_type": "mcq",
-                "question_text": "...",
-                "options": [
-                    {{"option_text": "...", "is_correct": true}},
-                    {{"option_text": "...", "is_correct": false}},
-                    ... (exactly 4 options)
-                ],
-                "difficulty": "easy" or "medium" or "hard",
-                "marks": 1,
-                "source_reference": "..."
-            }},
-            {{
-                "question_type": "short_answer",
-                "question_text": "...",
-                "expected_answer": "...",
-                "difficulty": "medium",
-                "marks": 2,
-                "source_reference": "..."
-            }},
-            {{
-                "question_type": "long_answer",
-                "question_text": "...",
-                "expected_answer": "...",
-                "marking_scheme": ["point 1", "point 2"],
-                "difficulty": "hard",
-                "marks": 5,
-                "source_reference": "..."
-            }}
-        ]
-    }}
-}}
-
-CRITICAL INSTRUCTIONS:
-1. The "slides" list must contain EXACTLY 2 slides. If the input has more or fewer, consolidate/adapt them to fit exactly 2 slides, with slide_number from 1 to 2 in order.
-2. The explanation of each slide must be a simplified explanation of at least 10 characters.
-3. Every MCQ question must have exactly 4 options with exactly one correct option.
-4. Total marks of the assignment must equal the sum of all question marks.
-5. Do not include markdown wraps (like ```json). Respond with valid JSON only.
-"""
-            from google.genai import types
-            gemini_resp = await self.client.aio.models.generate_content(
-                model=self.model_name,
-                contents=[types.Content(role="user", parts=[types.Part(text=structuring_prompt)])],
-                config=types.GenerateContentConfig(
-                    temperature=0.0,
-                    response_mime_type="application/json"
-                )
-            )
+            # Print the true response of RAGFlow to the terminal
+            print("\n" + "="*60)
+            print("[TRUE RAGFLOW RESPONSE]")
+            print(answer)
+            print("="*60 + "\n")
             
-            # 4. Parse the structured JSON
-            parsed_data = json.loads(gemini_resp.text.strip())
+            # Parse the RAGFlow markdown response into structured JSON using the regex/markdown parser
+            from module.services.markdown_parser import parse_markdown_to_module
+            parsed_data = parse_markdown_to_module(answer)
             
             # Import models
             from module.models.schemas import Lesson, Slide, Assignment, ValidationReport
@@ -406,8 +325,12 @@ CRITICAL INSTRUCTIONS:
             # Re-calculate or update assignment in DB with saved lesson_id
             await self.storage.save_lesson(lesson, assignment)
             
-            lesson_out = lesson.model_dump() if hasattr(lesson, 'model_dump') else lesson.dict()
-            assignment_out = assignment.model_dump() if hasattr(assignment, 'model_dump') else assignment.dict()
+            if hasattr(lesson, 'model_dump'):
+                lesson_out = lesson.model_dump(mode="json")
+                assignment_out = assignment.model_dump(mode="json")
+            else:
+                lesson_out = json.loads(lesson.json())
+                assignment_out = json.loads(assignment.json())
             
             validation_report = ValidationReport(
                 is_valid=True,
@@ -416,7 +339,10 @@ CRITICAL INSTRUCTIONS:
                 flagged_content=[],
                 recommendations=[]
             )
-            validation_out = validation_report.model_dump() if hasattr(validation_report, 'model_dump') else validation_report.dict()
+            if hasattr(validation_report, 'model_dump'):
+                validation_out = validation_report.model_dump(mode="json")
+            else:
+                validation_out = json.loads(validation_report.json())
             
             return {
                 "response": f"I have successfully generated the 2-slide lesson plan and worksheet! You can preview them in the pane on the right.",
