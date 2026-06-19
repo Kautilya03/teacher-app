@@ -48,7 +48,7 @@ if not exist "%ROOT_ENV%" (
             echo # Frontend API Configurations
             echo VITE_API_URL=http://localhost:3000
             echo VITE_FEEDBACK_BACKEND_URL=http://localhost:3000
-            echo VITE_SARVAM_API_KEY=sk_5j1nftps_Cat40uT2j5qFtBHB53FGCq33
+            echo VITE_SARVAM_API_KEY=your_sarvam_api_key_here
         ) > "%ROOT_ENV%"
         echo [SUCCESS] Created a default .env file.
     )

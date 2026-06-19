@@ -110,22 +110,6 @@ async def admin_login_endpoint(body: dict = Body(...)):
     email = body.get("email")
     password = body.get("password")
     
-    # Static credential check for local test ease
-    if email == "admin@diet.gov.in" and password == "YourNewPassword123":
-        from utils.jwt import create_access_token
-        token = create_access_token("admin_uuid_12345", role="admin")
-        return {
-            "success": True,
-            "message": "Login successful",
-            "accToken": token,
-            "admin": {
-                "id": "admin_uuid_12345",
-                "name": "System Admin",
-                "email": "admin@diet.gov.in",
-                "role": "admin"
-            }
-        }
-    
     # Fallback to standard DB auth
     from services.auth_service import AuthService
     from schemas.auth import LoginRequest

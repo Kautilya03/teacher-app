@@ -457,7 +457,7 @@ class RAGFlowClientV2:
                     self._url(f"/api/v1/datasets/{dataset_id}/documents"),
                     headers=headers,
                     files={"file": (file_name, f, "application/pdf")},
-                    timeout=120,
+                    timeout=self.timeout_sec,
                 )
             resp.raise_for_status()
             return resp.json()
@@ -523,7 +523,7 @@ class RAGFlowClientV2:
                 self._url(f"/api/v1/openai/{cid}/chat/completions"),
                 headers=self._headers(),
                 json=payload,
-                timeout=120,
+                timeout=self.timeout_sec,
             )
             resp.raise_for_status()
             return resp.json()
@@ -562,7 +562,7 @@ class RAGFlowClientV2:
                 headers=self._headers(),
                 json=payload,
                 stream=True,
-                timeout=120,
+                timeout=self.timeout_sec,
             )
             resp.raise_for_status()
 
@@ -606,7 +606,7 @@ class RAGFlowClientV2:
                 headers=self._headers(),
                 json=payload,
                 stream=True,
-                timeout=120,
+                timeout=self.timeout_sec,
             )
             resp.raise_for_status()
             for line in resp.iter_lines():
@@ -632,7 +632,7 @@ class RAGFlowClientV2:
                 headers=self._headers(),
                 json=payload,
                 stream=True,
-                timeout=120,
+                timeout=self.timeout_sec,
             )
             resp.raise_for_status()
             for line in resp.iter_lines():
@@ -716,13 +716,13 @@ class RAGFlowClientV2:
                 self._url(f"/api/v1/chats/{cid}/completions"),
                 headers=self._headers(),
                 json=payload,
-                timeout=120,
+                timeout=self.timeout_sec,
             )
             resp.raise_for_status()
             return resp.json()
         except Exception as e:
             logger.error(f"Stateful chat completion error: {e}")
-            return {"success": False, "error": str(e)}
+            return {"code": -1, "message": str(e), "success": False, "error": str(e)}
 
     async def retrieve_raw_chunks_async(
         self,

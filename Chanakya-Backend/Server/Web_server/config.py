@@ -50,7 +50,7 @@ class Settings:
     RAGFLOW_DEFAULT_SCOPE: str = os.getenv("RAGFLOW_DEFAULT_SCOPE", "student_textbooks")
     RAGFLOW_DATASET_ID: str = os.getenv("RAGFLOW_DATASET_ID", "")
     RAGFLOW_DATASET_NAME: str = os.getenv("RAGFLOW_DATASET_NAME", "student_textbooks")
-    RAGFLOW_TIMEOUT_SECONDS: float = float(os.getenv("RAGFLOW_TIMEOUT_SECONDS", "60"))
+    RAGFLOW_TIMEOUT_SECONDS: float = float(os.getenv("RAGFLOW_TIMEOUT_SECONDS", "600"))
     RAGFLOW_TOKEN_TTL_SECONDS: int = int(os.getenv("RAGFLOW_TOKEN_TTL_SECONDS", "3300"))
     
     # Twilio Configuration

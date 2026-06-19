@@ -38,7 +38,7 @@ You must respond with a JSON object conforming exactly to this structure:
     "key_points": ["Point 1", "Point 2", "Point 3"],
     "examples": ["Indian context practical classroom example 1", "Example 2"],
     "sources": ["Class|Subject|Chapter name or document source 1", "Source 2"],
-    "confidence": 0.9,
+    "confidence": 0.85,
     "coverage": "complete"
 }}
 
@@ -47,8 +47,8 @@ Where:
 - key_points: 3-5 key takeaways.
 - examples: Classroom examples.
 - sources: List of source documents from retrieved sources.
-- confidence: Always output a confidence score of 0.9 or higher.
-- coverage: Always set to "complete" or "partial".
+- confidence: A float score between 0.0 and 1.0 indicating how well the explanation is grounded in the retrieved sources. Use lower confidence (e.g., < 0.4) if the retrieved sources do not support or are irrelevant to the answer.
+- coverage: Set to "complete", "partial", or "insufficient" based on how much of the question's required information is covered by the retrieved sources.
 
 IMPORTANT: Return ONLY valid JSON, do not wrap in markdown block formatting."""
 
@@ -120,8 +120,10 @@ class ContentExplainerTool(BaseTool):
             # Get FastAPI session_id
             fastapi_session_id = (context or {}).get("session_id") or "default_session"
             
-            # Import ragflow_service
+            # Import ragflow_service and settings to resolve content chatbot ID
             from services.ragflow_v2 import ragflow_service
+            from config import settings
+            content_chat_id = settings.RAGFLOW_CHAT_ID
             
             # Try lookup in MongoDB ChatSession
             ragflow_session_id = None
@@ -137,7 +139,10 @@ class ContentExplainerTool(BaseTool):
             
             # Fallback to listing RAGFlow sessions
             if not ragflow_session_id:
-                sessions = await asyncio.to_thread(ragflow_service.list_sessions)
+                sessions = await asyncio.to_thread(
+                    ragflow_service.list_sessions,
+                    chat_id=content_chat_id
+                )
                 for s in sessions:
                     if s.get("name") == fastapi_session_id:
                         ragflow_session_id = s.get("id")
@@ -153,6 +158,7 @@ class ContentExplainerTool(BaseTool):
                 logger.info(f"Creating new RAGFlow chat session for: '{session_name}'")
                 ragflow_session_id = await asyncio.to_thread(
                     ragflow_service.create_new_session,
+                    chat_id=content_chat_id,
                     name=session_name
                 )
                 
@@ -167,12 +173,13 @@ class ContentExplainerTool(BaseTool):
             
             if not ragflow_session_id:
                 raise Exception("Failed to get or create RAGFlow chat session")
-
+ 
             # 3. Call RAGFlow stateful completions
-            logger.info(f"Querying RAGFlow Chat Assistant for: '{query}' with session: {ragflow_session_id}")
+            logger.info(f"Querying RAGFlow Chat Assistant for: '{query}' with session: {ragflow_session_id} and chat ID: {content_chat_id}")
             resp = await asyncio.to_thread(
                 ragflow_service.chat_completion_stateful,
                 question=query,
+                chat_id=content_chat_id,
                 session_id=ragflow_session_id
             )
             
@@ -184,30 +191,20 @@ class ContentExplainerTool(BaseTool):
             assistant_response = resp.get("data", {}).get("answer", "")
             chunks = resp.get("data", {}).get("reference", {}).get("chunks", []) or []
             
-            # Filter chunks based on similarity threshold >= 0.4
-            valid_chunks = []
-            for chunk in chunks:
-                score = chunk.get("similarity") or chunk.get("similarity_score") or chunk.get("score")
-                if score is not None:
-                    try:
-                        if float(score) >= 0.4:
-                            valid_chunks.append(chunk)
-                    except ValueError:
-                        valid_chunks.append(chunk)
-                else:
-                    valid_chunks.append(chunk)
+            # Use all chunks returned by RAGFlow (similarity filtering is already handled on the RAGFlow server side)
+            valid_chunks = chunks
             
-            # If no relevant chunks are found, return strict refusal directly
-            if not valid_chunks:
-                logger.info("No relevant chunks found in textbook retrieval. Returning refusal to avoid general Gen AI fallback.")
+            # If no content and no chunks were returned by RAGFlow, return fallback/refusal
+            if not valid_chunks and not assistant_response:
+                logger.info("No content or chunks returned by RAGFlow. Returning insufficient confidence to trigger fallback.")
                 return {
                     "explanation": "I couldn't find any relevant content in the textbooks to answer this query.",
                     "key_points": [],
                     "examples": [],
                     "sources": [],
-                    "confidence": 1.0,
-                    "coverage": "complete",
-                    "retrieved_passages": 1,
+                    "confidence": 0.0,
+                    "coverage": "insufficient",
+                    "retrieved_passages": 0,
                     "filters_applied": filters if filters else None
                 }
             
@@ -239,13 +236,14 @@ class ContentExplainerTool(BaseTool):
             # Parse structured JSON response
             result = json.loads(response.text)
             
-            # Ensure no fallback to expert_teacher is triggered for successful API calls
-            result["confidence"] = max(result.get("confidence", 0.9), 0.9)
-            if result.get("coverage") == "insufficient" or not result.get("coverage"):
+            # Parse confidence and coverage from LLM result naturally
+            if "confidence" not in result:
+                result["confidence"] = 0.8
+            if "coverage" not in result:
                 result["coverage"] = "complete"
             
-            # Add metadata (must be at least 1 to prevent fallback)
-            result["retrieved_passages"] = max(1, len(valid_chunks))
+            # Add metadata (set to actual number of valid chunks)
+            result["retrieved_passages"] = len(valid_chunks)
             result["filters_applied"] = filters if filters else None
             
             logger.info(f"ContentExplainer completed with confidence: {result.get('confidence', 0.0)}")

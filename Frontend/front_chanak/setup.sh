@@ -46,7 +46,7 @@ if [ ! -f "$ROOT_ENV" ]; then
 # Frontend API Configurations
 VITE_API_URL=http://localhost:3000
 VITE_FEEDBACK_BACKEND_URL=http://localhost:3000
-VITE_SARVAM_API_KEY=sk_5j1nftps_Cat40uT2j5qFtBHB53FGCq33
+VITE_SARVAM_API_KEY=your_sarvam_api_key_here
 EOT
         echo "[SUCCESS] Created a default .env file."
     fi
