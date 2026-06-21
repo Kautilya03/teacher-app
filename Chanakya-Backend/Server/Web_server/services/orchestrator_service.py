@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 from cachetools import TTLCache
 from orchestrator import ChanakyaOrchestrator
 from orchestrator.schemas import OrchestratorInput
+# pyrefly: ignore [missing-import]
 import structlog
 from fastapi import HTTPException
 from config import settings
@@ -164,6 +165,34 @@ class OrchestratorService:
         if selected_tool:
             if selected_tool == "general":
                 selected_tool = "general_conversation"
+                
+            # Enforce strict scope in locked modes
+            is_in_scope, warning_msg = await self._check_query_scope(query_request.query, selected_tool)
+            if not is_in_scope:
+                # Save user message to database history
+                if query_request.session_id and self.orchestrator.storage:
+                    await self.orchestrator.storage.add_message(query_request.session_id, "user", query_request.query)
+                # Save warning response to database history
+                if query_request.session_id and self.orchestrator.storage:
+                    metadata = {
+                        "tool_used": selected_tool,
+                        "reasoning": f"Query out of scope for locked tool {selected_tool}",
+                        "confidence": 1.0,
+                        "result": {"response": warning_msg},
+                        "timestamp": datetime.utcnow().isoformat()
+                    }
+                    await self.orchestrator.storage.add_message(query_request.session_id, "assistant", warning_msg, metadata=metadata)
+                
+                return QueryResponse(
+                    success=False,
+                    tool_used=selected_tool,
+                    reasoning=f"Query out of scope for locked tool {selected_tool}",
+                    result={"response": warning_msg},
+                    confidence=1.0,
+                    processing_time_ms=0.0,
+                    timestamp=datetime.utcnow(),
+                    error=warning_msg
+                )
                 
             start_time = time.time()
             try:
@@ -432,6 +461,69 @@ class OrchestratorService:
         except Exception as e:
             logger.error(f"Error deleting session: {str(e)}")
             return False
+
+    async def _check_query_scope(self, query: str, tool_name: str) -> tuple[bool, str]:
+        """
+        Verify if the query is in scope for the strictly locked mode.
+        Returns: (is_in_scope, warning_message)
+        """
+        # Always allow small talk and greetings
+        query_lower = query.strip().lower()
+        greetings = ["hi", "hello", "hey", "thanks", "thank you", "good morning", "good afternoon", "namaste", "yes", "no"]
+        if query_lower in greetings or len(query_lower) < 4:
+            return True, ""
+
+        # Map tool to scope description and user-friendly name
+        tool_scopes = {
+            "module_builder": {
+                "desc": "creating teaching modules, lesson plans, slide outlines, course structures, teaching chapters, syllabus guides",
+                "friendly": "Module Creator",
+                "warning": "This chat is strictly dedicated to creating teaching modules and lesson plans. If you'd like to ask general questions, create classroom games, or handle a classroom crisis, please start a new chat in that mode or change the mode using the dropdown."
+            },
+            "activity_generator": {
+                "desc": "classroom games, interactive activities, learning projects, math/science experiments or demonstrations",
+                "friendly": "Activity Generator",
+                "warning": "This chat is strictly dedicated to generating classroom activities and games. If you'd like to create a module/lesson plan, ask educational questions, or handle a classroom crisis, please start a new chat in that mode or change the mode using the dropdown."
+            },
+            "expert_teacher": {
+                "desc": "explaining educational concepts, answering curriculum questions, general knowledge, teaching strategy advice",
+                "friendly": "Expert Q&A",
+                "warning": "This chat is strictly dedicated to educational Q&A and concept explanations. If you'd like to create a lesson module or generate classroom games, please start a new chat in that mode or change the mode using the dropdown."
+            }
+        }
+
+        if tool_name not in tool_scopes:
+            return True, ""
+
+        scope_info = tool_scopes[tool_name]
+        prompt = f"""You are an educational assistant quality checker.
+The current chat interface is strictly locked to: '{scope_info["friendly"]}' which is for: {scope_info["desc"]}.
+The teacher entered this query: "{query}"
+
+Determine if this query is relevant to this locked scope or if it is asking for something completely different (like classroom crisis management, teacher motivation, resource finder, or general unrelated topics).
+
+Answer with ONLY "YES" or "NO".
+
+Is the query within the scope of '{scope_info["friendly"]}'?"""
+
+        try:
+            from google.genai import types
+            response = await self.orchestrator.client.aio.models.generate_content(
+                model=self.orchestrator.model_name,
+                contents=[prompt],
+                config=types.GenerateContentConfig(
+                    temperature=0.0,
+                    max_output_tokens=5,
+                )
+            )
+            ans = response.text.strip().lower()
+            if "no" in ans:
+                return False, scope_info["warning"]
+        except Exception as e:
+            logger.error(f"Error checking query scope: {str(e)}")
+        
+        return True, ""
+
 
 
 # Global instance

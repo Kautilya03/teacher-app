@@ -64,6 +64,30 @@ function App() {
                   </ProtectedRoute>
                 }
               />
+              <Route
+                path="/chat/module-builder"
+                element={
+                  <ProtectedRoute>
+                    <ChatInterface mode="module_builder" />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/chat/qna"
+                element={
+                  <ProtectedRoute>
+                    <ChatInterface mode="expert_teacher" />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/chat/activity"
+                element={
+                  <ProtectedRoute>
+                    <ChatInterface mode="activity_generator" />
+                  </ProtectedRoute>
+                }
+              />
               <Route path="/module" element={<ModulePage />} />
               <Route path="/discuss" element={<Discuss />} />
               <Route path="/discuss/new" element={<DiscussNew />} />

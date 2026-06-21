@@ -15,6 +15,7 @@ from typing import Optional, Dict, Any, TypedDict, List, AsyncIterator
 from google import genai
 from google.genai import types
 from cachetools import LRUCache
+# pyrefly: ignore [missing-import]
 import structlog
 
 from .schemas import (
@@ -28,7 +29,9 @@ from .tools import ActivityGeneratorTool, CrisisHandlerTool, TeacherMotivationTo
 
 
 # LangGraph imports
+# pyrefly: ignore [missing-import]
 from langgraph.graph import StateGraph, END
+# pyrefly: ignore [missing-import]
 from langgraph.checkpoint.memory import MemorySaver
 
 # SQLite storage for conversations

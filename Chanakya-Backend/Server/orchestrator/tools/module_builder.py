@@ -89,6 +89,7 @@ class ModuleBuilderTool:
                     "status": "error"
                 }
             
+            # pyrefly: ignore [missing-import]
             from services.ragflow_v2 import ragflow_service
             from config import settings
             import asyncio
@@ -237,6 +238,7 @@ class ModuleBuilderTool:
         fastapi_session_id = context.get("session_id") or "default_session"
         logger.info(f"module_builder_lesson_plan_direct: query={query}, session_id={fastapi_session_id}")
         
+        # pyrefly: ignore [missing-import]
         from services.ragflow_v2 import ragflow_service
         import asyncio
         from config import settings
@@ -249,6 +251,7 @@ class ModuleBuilderTool:
         ragflow_session_id = None
         chat_session = None
         try:
+            # pyrefly: ignore [missing-import]
             from models.chat_session import ChatSession as MongoChatSession
             chat_session = await MongoChatSession.find_one(MongoChatSession.session_id == fastapi_session_id)
             if chat_session and chat_session.ragflow_session_id:

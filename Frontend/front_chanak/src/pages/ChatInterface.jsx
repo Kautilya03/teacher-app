@@ -16,13 +16,14 @@ import LessonPreview from "../components/module/LessonPreview";
 import AssignmentPreview from "../components/module/AssignmentPreview";
 import ExportControls from "../components/module/ExportControls";
 
-function ChatInterface() {
+function ChatInterface({ mode }) {
   const { user } = useAuth();
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+  const [lockedMode, setLockedMode] = useState(null);
   const attachInputRef = useRef(null);
   const imageInputRef = attachInputRef; // alias for backward compatibility
 
@@ -63,6 +64,28 @@ function ChatInterface() {
   useEffect(() => {
     loadChatHistory();
   }, []);
+
+  // Set and lock chat mode based on prop or URL query params
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    let activeMode = mode;
+
+    if (params.has("activity")) {
+      activeMode = "activity_generator";
+    } else if (params.get("mode")) {
+      activeMode = params.get("mode");
+    }
+
+    if (activeMode) {
+      setChatMode(activeMode);
+      setLockedMode(activeMode);
+      console.log(`[DEBUG] Active Screen: Chat Interface | Route: ${window.location.pathname}${window.location.search} | Mode Activated: ${activeMode}`);
+    } else {
+      setLockedMode(null);
+      setChatMode("general");
+      console.log(`[DEBUG] Active Screen: Chat Interface | Route: ${window.location.pathname}${window.location.search} | Mode Activated: Dynamic/General`);
+    }
+  }, [mode, window.location.pathname, window.location.search]);
 
   const loadChatHistory = async () => {
     try {
@@ -886,124 +909,152 @@ function ChatInterface() {
                   </h2>
                 </div>
 
-                {/* Feature Mode Buttons */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-2xl">
-                  {[
-                    {
-                      name: "Crisis-Handling Mode",
-                      color: "#F99DA8",
-                      icon: (
-                        <svg
-                          className="w-4 h-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                          />
-                        </svg>
-                      ),
-                    },
-                    {
-                      name: "Activity Generator",
-                      color: "#FDE047",
-                      icon: (
-                        <svg
-                          className="w-4 h-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-                          />
-                        </svg>
-                      ),
-                    },
-                    {
-                      name: "Module Creator",
-                      color: "#D4F1C5",
-                      icon: (
-                        <svg
-                          className="w-4 h-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                          />
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                          />
-                        </svg>
-                      ),
-                    },
-                    {
-                      name: "Post-class Planner",
-                      color: "#E8D5FF",
-                      icon: (
-                        <svg
-                          className="w-4 h-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
-                          />
-                        </svg>
-                      ),
-                    },
-                  ].map((feature) => (
-                    <button
-                      key={feature.name}
-                      className="p-3 rounded-lg border-2 border-[#000000] text-left transition-all shadow-[2px_2px_0px_0px_#000000] hover:shadow-[1px_1px_0px_0px_#000000] hover:translate-x-0.5 hover:translate-y-0.5"
-                      style={{ backgroundColor: feature.color }}
-                      onClick={() => {
-                        if (feature.name === "Module Creator") {
-                          setChatMode("module_builder");
-                          setInput("Create a module for Class 7 Geography");
-                        } else if (feature.name === "Crisis-Handling Mode") {
-                          setChatMode("crisis_handler");
-                          setInput("A student is throwing tantrums in class. How should I respond?");
-                        } else if (feature.name === "Activity Generator") {
-                          setChatMode("activity_generator");
-                          setInput("Generate a classroom activity for Class 8 Mathematics");
-                        } else if (feature.name === "Post-class Planner") {
-                          setChatMode("classroom_guidance");
-                          setInput("I just finished teaching algebra. Plan my next reflection and guidance.");
-                        } else {
-                          setInput(`Activate ${feature.name}`);
-                        }
-                      }}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="text-[#000000]">{feature.icon}</div>
-                        <span className="text-sm font-bold text-[#000000]">
-                          {feature.name}
-                        </span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
+                 {/* Feature Mode Buttons */}
+                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-2xl">
+                   {[
+                     {
+                       name: "Crisis-Handling Mode",
+                       mode: "crisis_handler",
+                       color: "#F99DA8",
+                       icon: (
+                         <svg
+                           className="w-4 h-4"
+                           fill="none"
+                           stroke="currentColor"
+                           viewBox="0 0 24 24"
+                         >
+                           <path
+                             strokeLinecap="round"
+                             strokeLinejoin="round"
+                             strokeWidth={2}
+                             d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                           />
+                         </svg>
+                       ),
+                     },
+                     {
+                       name: "Activity Generator",
+                       mode: "activity_generator",
+                       color: "#FDE047",
+                       icon: (
+                         <svg
+                           className="w-4 h-4"
+                           fill="none"
+                           stroke="currentColor"
+                           viewBox="0 0 24 24"
+                         >
+                           <path
+                             strokeLinecap="round"
+                             strokeLinejoin="round"
+                             strokeWidth={2}
+                             d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+                           />
+                         </svg>
+                       ),
+                     },
+                     {
+                       name: "Module Creator",
+                       mode: "module_builder",
+                       color: "#D4F1C5",
+                       icon: (
+                         <svg
+                           className="w-4 h-4"
+                           fill="none"
+                           stroke="currentColor"
+                           viewBox="0 0 24 24"
+                         >
+                           <path
+                             strokeLinecap="round"
+                             strokeLinejoin="round"
+                             strokeWidth={2}
+                             d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                           />
+                           <path
+                             strokeLinecap="round"
+                             strokeLinejoin="round"
+                             strokeWidth={2}
+                             d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                           />
+                         </svg>
+                       ),
+                     },
+                     {
+                       name: "Q&A Expert Teacher",
+                       mode: "expert_teacher",
+                       color: "#A7F3D0",
+                       icon: (
+                         <svg
+                           className="w-4 h-4"
+                           fill="none"
+                           stroke="currentColor"
+                           viewBox="0 0 24 24"
+                         >
+                           <path
+                             strokeLinecap="round"
+                             strokeLinejoin="round"
+                             strokeWidth={2}
+                             d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+                           />
+                         </svg>
+                       ),
+                     },
+                     {
+                       name: "Post-class Planner",
+                       mode: "classroom_guidance",
+                       color: "#E8D5FF",
+                       icon: (
+                         <svg
+                           className="w-4 h-4"
+                           fill="none"
+                           stroke="currentColor"
+                           viewBox="0 0 24 24"
+                         >
+                           <path
+                             strokeLinecap="round"
+                             strokeLinejoin="round"
+                             strokeWidth={2}
+                             d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+                           />
+                         </svg>
+                       ),
+                     },
+                   ].filter(feature => !lockedMode ? feature.mode !== "expert_teacher" : feature.mode === lockedMode)
+                    .map((feature) => (
+                     <button
+                       key={feature.name}
+                       className="p-3 rounded-lg border-2 border-[#000000] text-left transition-all shadow-[2px_2px_0px_0px_#000000] hover:shadow-[1px_1px_0px_0px_#000000] hover:translate-x-0.5 hover:translate-y-0.5"
+                       style={{ backgroundColor: feature.color }}
+                       onClick={() => {
+                         if (feature.mode === "module_builder") {
+                           setChatMode("module_builder");
+                           setInput("Create a module for Class 7 Geography");
+                         } else if (feature.mode === "crisis_handler") {
+                           setChatMode("crisis_handler");
+                           setInput("A student is throwing tantrums in class. How should I respond?");
+                         } else if (feature.mode === "activity_generator") {
+                           setChatMode("activity_generator");
+                           setInput("Generate a classroom activity for Class 8 Mathematics");
+                         } else if (feature.mode === "classroom_guidance") {
+                           setChatMode("classroom_guidance");
+                           setInput("I just finished teaching algebra. Plan my next reflection and guidance.");
+                         } else if (feature.mode === "expert_teacher") {
+                           setChatMode("expert_teacher");
+                           setInput("How do you teach quantum physics concepts to high schoolers?");
+                         } else {
+                           setInput(`Activate ${feature.name}`);
+                         }
+                       }}
+                     >
+                       <div className="flex items-center gap-3">
+                         <div className="text-[#000000]">{feature.icon}</div>
+                         <span className="text-sm font-bold text-[#000000]">
+                           {feature.name}
+                         </span>
+                       </div>
+                     </button>
+                   ))}
+                 </div>
+               </div>
             ) : (
               <div className="max-w-4xl mx-auto space-y-8 pb-4">
                 {messages.map((message) => (
@@ -1443,53 +1494,64 @@ function ChatInterface() {
                     )}
                   </button>
 
-                  {/* Chat Mode Selector Dropdown */}
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={chatMode}
-                      onChange={(e) => {
-                        const mode = e.target.value;
-                        setChatMode(mode);
-                        if (mode === "module_builder") {
-                          if (!input.trim()) {
-                            setInput("Create a module for Class 7 Geography");
-                          }
-                        } else if (mode === "crisis_handler") {
-                          setInput("A student is throwing tantrums in class. How should I respond?");
-                        } else if (mode === "activity_generator") {
-                          setInput("Generate a classroom activity for Class 8 Mathematics");
-                        } else if (mode === "classroom_guidance") {
-                          setInput("I just finished teaching algebra. Plan my next reflection and guidance.");
-                        } else if (mode === "teacher_motivation") {
-                          setInput("I am feeling a bit burned out today. Give me some encouragement.");
-                        } else if (mode === "content_explainer") {
-                          setInput("Explain the process of photosynthesis for class 6 students.");
-                        } else if (mode === "expert_teacher") {
-                          setInput("How do you teach quantum physics concepts to high schoolers?");
-                        } else if (mode === "quick_answer") {
-                          setInput("What is the capital of France?");
-                        } else if (mode === "resource_finder") {
-                          setInput("Find educational resources on Newtonian mechanics.");
-                        } else if (mode === "feedback_response") {
-                          setInput("The student did well but struggled with fractions.");
-                        }
-                      }}
-                      className="px-3 py-1.5 border-2 border-[#000000] rounded-lg font-bold text-sm bg-white text-[#000000] transition-all shadow-[2px_2px_0px_0px_#000000] hover:shadow-[1px_1px_0px_0px_#000000] focus:outline-none cursor-pointer"
-                      aria-label="Chat Mode"
-                    >
-                      <option value="general">💬 General Assistant</option>
-                      <option value="module_builder">📚 Module Creator</option>
-                      <option value="activity_generator">🪁 Activity Generator</option>
-                      <option value="crisis_handler">🚨 Crisis Handler</option>
-                      <option value="teacher_motivation">💪 Teacher Motivation</option>
-                      <option value="content_explainer">📖 Content Explainer</option>
-                      <option value="classroom_guidance">🏫 Classroom Guidance</option>
-                      <option value="expert_teacher">🎓 Expert Teacher</option>
-                      <option value="quick_answer">⚡ Quick Answer</option>
-                      <option value="resource_finder">🔍 Resource Finder</option>
-                      <option value="feedback_response">💬 Feedback Response</option>
-                    </select>
-                  </div>
+                   {/* Chat Mode Selector Dropdown */}
+                   {!lockedMode ? (
+                     <div className="flex items-center gap-2">
+                       <select
+                         value={chatMode}
+                         onChange={(e) => {
+                           const mode = e.target.value;
+                           setChatMode(mode);
+                           if (mode === "module_builder") {
+                             if (!input.trim()) {
+                               setInput("Create a module for Class 7 Geography");
+                             }
+                           } else if (mode === "crisis_handler") {
+                             setInput("A student is throwing tantrums in class. How should I respond?");
+                           } else if (mode === "activity_generator") {
+                             setInput("Generate a classroom activity for Class 8 Mathematics");
+                           } else if (mode === "classroom_guidance") {
+                             setInput("I just finished teaching algebra. Plan my next reflection and guidance.");
+                           } else if (mode === "teacher_motivation") {
+                             setInput("I am feeling a bit burned out today. Give me some encouragement.");
+                           } else if (mode === "content_explainer") {
+                             setInput("Explain the process of photosynthesis for class 6 students.");
+                           } else if (mode === "expert_teacher") {
+                             setInput("How do you teach quantum physics concepts to high schoolers?");
+                           } else if (mode === "quick_answer") {
+                             setInput("What is the capital of France?");
+                           } else if (mode === "resource_finder") {
+                             setInput("Find educational resources on Newtonian mechanics.");
+                           } else if (mode === "feedback_response") {
+                             setInput("The student did well but struggled with fractions.");
+                           }
+                         }}
+                         className="px-3 py-1.5 border-2 border-[#000000] rounded-lg font-bold text-sm bg-white text-[#000000] transition-all shadow-[2px_2px_0px_0px_#000000] hover:shadow-[1px_1px_0px_0px_#000000] focus:outline-none cursor-pointer"
+                         aria-label="Chat Mode"
+                       >
+                         <option value="general">💬 General Assistant</option>
+                         <option value="module_builder">📚 Module Creator</option>
+                         <option value="activity_generator">🪁 Activity Generator</option>
+                         <option value="crisis_handler">🚨 Crisis Handler</option>
+                         <option value="teacher_motivation">💪 Teacher Motivation</option>
+                         <option value="content_explainer">📖 Content Explainer</option>
+                         <option value="classroom_guidance">🏫 Classroom Guidance</option>
+                         <option value="expert_teacher">🎓 Expert Teacher</option>
+                         <option value="quick_answer">⚡ Quick Answer</option>
+                         <option value="resource_finder">🔍 Resource Finder</option>
+                         <option value="feedback_response">💬 Feedback Response</option>
+                       </select>
+                     </div>
+                   ) : (
+                     <div className="flex items-center gap-2 px-3 py-1.5 border-2 border-[#000000] rounded-lg font-bold text-sm bg-[#F3F4F6] text-[#000000] shadow-[2px_2px_0px_0px_#000000]">
+                       <span>
+                         {lockedMode === "module_builder" && "📚 Module Creator Locked"}
+                         {lockedMode === "expert_teacher" && "🎓 Expert Q&A Locked"}
+                         {lockedMode === "activity_generator" && "🪁 Activity Generator Locked"}
+                         {lockedMode !== "module_builder" && lockedMode !== "expert_teacher" && lockedMode !== "activity_generator" && `🔒 ${lockedMode} Mode Locked`}
+                       </span>
+                     </div>
+                   )}
 
                   {/* Reopen Preview Button */}
                   {!showArtifact && (activeArtifactLesson || activeArtifactAssignment) && (
