@@ -389,11 +389,8 @@ class ChanakyaOrchestrator:
         # Conversation contexts (LRU cache to prevent memory leaks)
         self.contexts: LRUCache = LRUCache(maxsize=1000)
         
-        # SQLite storage for persistent conversation history
-        if Config.db.use_sqlite:
-            self.storage = ConversationStorage()
-        else:
-            self.storage = None
+        # Persistent PostgreSQL storage for conversation history
+        self.storage = ConversationStorage()
         
         # Build the LangGraph
         self.graph = self._build_graph()

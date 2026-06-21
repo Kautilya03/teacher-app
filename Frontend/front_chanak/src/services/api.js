@@ -147,8 +147,9 @@ export const getUserProfile = async () => {
 /**
  * Chat History - Get recent sessions for authenticated user
  */
-export const getChatHistory = async (limit = 20) => {
-  const response = await apiClient.get(`/api/chat/history?limit=${limit}`);
+export const getChatHistory = async (limit = 20, tool = '') => {
+  const url = tool ? `/api/chat/history?limit=${limit}&tool=${tool}` : `/api/chat/history?limit=${limit}`;
+  const response = await apiClient.get(url);
   return response.data;
 };
 

@@ -39,6 +39,14 @@ async def connect_to_mongo():
         ]
     )
     print(f"[DB] Connected to MongoDB: {settings.DATABASE_NAME}")
+    
+    # Backfill existing chat sessions in the background on startup
+    try:
+        from services.chat_service import ChatService
+        import asyncio
+        asyncio.create_task(ChatService.backfill_session_tools())
+    except Exception as e:
+        print(f"[DB] Failed to start chat session tool backfill: {e}")
 
 
 async def close_mongo_connection():

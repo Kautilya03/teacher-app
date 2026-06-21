@@ -58,11 +58,7 @@ function App() {
 
               <Route
                 path="/chat"
-                element={
-                  <ProtectedRoute>
-                    <ChatInterface />
-                  </ProtectedRoute>
-                }
+                element={<Navigate to="/chat/qna" replace />}
               />
               <Route
                 path="/chat/module-builder"

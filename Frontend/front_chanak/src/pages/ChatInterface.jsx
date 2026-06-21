@@ -18,12 +18,28 @@ import ExportControls from "../components/module/ExportControls";
 
 function ChatInterface({ mode }) {
   const { user } = useAuth();
+
+  // Helper to parse mode from prop or URL query params on initial mount
+  const getInitialMode = () => {
+    const params = new URLSearchParams(window.location.search);
+    let activeMode = mode;
+    if (params.has("activity")) {
+      activeMode = "activity_generator";
+    } else if (params.get("mode")) {
+      activeMode = params.get("mode");
+    }
+    return activeMode || "general";
+  };
+
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
-  const [lockedMode, setLockedMode] = useState(null);
+  const [lockedMode, setLockedMode] = useState(() => {
+    const initial = getInitialMode();
+    return initial === "general" ? null : initial;
+  });
   const attachInputRef = useRef(null);
   const imageInputRef = attachInputRef; // alias for backward compatibility
 
@@ -52,7 +68,7 @@ function ChatInterface({ mode }) {
   const [showAnalysisModes, setShowAnalysisModes] = useState(false);
 
   // Chat Mode & Artifact Pane states
-  const [chatMode, setChatMode] = useState("general"); // "general" or "module_builder"
+  const [chatMode, setChatMode] = useState(() => getInitialMode()); // "general" or "module_builder"
   const [showArtifact, setShowArtifact] = useState(false);
   const [activeArtifactLesson, setActiveArtifactLesson] = useState(null);
   const [activeArtifactAssignment, setActiveArtifactAssignment] = useState(null);
@@ -60,10 +76,10 @@ function ChatInterface({ mode }) {
   const [activeLessonId, setActiveLessonId] = useState(null);
   const [isCollapsibleChatMinimized, setIsCollapsibleChatMinimized] = useState(false);
 
-  // Load chat history on mount
+  // Load chat history on mount and when chatMode changes
   useEffect(() => {
     loadChatHistory();
-  }, []);
+  }, [chatMode]);
 
   // Set and lock chat mode based on prop or URL query params
   useEffect(() => {
@@ -89,7 +105,7 @@ function ChatInterface({ mode }) {
 
   const loadChatHistory = async () => {
     try {
-      const response = await getChatHistory(20);
+      const response = await getChatHistory(20, chatMode);
       if (response.success && response.sessions) {
         // Sort sessions by updated_at in descending order (most recent first)
         const sortedSessions = [...response.sessions].sort((a, b) => {
@@ -189,7 +205,7 @@ function ChatInterface({ mode }) {
           setChatMode("module_builder");
         } else {
           setShowArtifact(false);
-          setChatMode("general");
+          setChatMode(lockedMode || "general");
         }
       }
     } catch (error) {
@@ -208,7 +224,7 @@ function ChatInterface({ mode }) {
     setActiveArtifactLesson(null);
     setActiveArtifactAssignment(null);
     setActiveLessonId(null);
-    setChatMode("general");
+    setChatMode(lockedMode || "general");
     setIsCollapsibleChatMinimized(false);
   };
 
@@ -1018,7 +1034,11 @@ function ChatInterface({ mode }) {
                          </svg>
                        ),
                      },
-                   ].filter(feature => !lockedMode ? feature.mode !== "expert_teacher" : feature.mode === lockedMode)
+                   ].filter(feature => {
+                      const allowedModes = ["module_builder", "expert_teacher", "activity_generator"];
+                      if (!allowedModes.includes(feature.mode)) return false;
+                      return !lockedMode ? true : feature.mode === lockedMode;
+                    })
                     .map((feature) => (
                      <button
                        key={feature.name}

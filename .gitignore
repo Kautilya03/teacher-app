@@ -33,6 +33,7 @@ htmlcov/
 .kiro/
 .qodo/
 postgres-data/
+pg_data_local/
 
 
 # Node.js

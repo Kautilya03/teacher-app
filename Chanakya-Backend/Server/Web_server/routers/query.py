@@ -225,10 +225,12 @@ async def process_query(
                    session_id=query_request.session_id)
 
         if query_request.session_id:
+            selected_tool = query_request.selected_tool or (query_request.context.get("selected_tool") if query_request.context else None)
             await ChatService.get_or_create_session(
                 session_id=query_request.session_id,
                 user_id=user_id,
                 ragflow_context=query_request.context or {},
+                tool=selected_tool
             )
         
         if not orchestrator_service.is_ready():
