@@ -137,7 +137,8 @@ async def admin_login_endpoint(body: dict = Body(...)):
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
-        raise HTTPException(status_code=401, detail=f"Login failed: {str(e)}")
+        logger.error(f"Login failed: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=401, detail="Login failed")
 
 
 @app.get("/")

@@ -1760,10 +1760,11 @@ TIPS: {', '.join(activity_output.get('tips', [])) if activity_output.get('tips')
             language=detected_lang
         )
         
-        # Store detected language in context for tools to use
+        # Store detected language and session_id in context for tools to use
         if input_data.context is None:
             input_data.context = {}
         input_data.context['detected_language'] = detected_lang
+        input_data.context['session_id'] = session_id
         
         # Store quick_answer_mode flag in context
         if input_data.quick_answer_mode:
@@ -1776,7 +1777,7 @@ TIPS: {', '.join(activity_output.get('tips', [])) if activity_output.get('tips')
             "session_id": session_id,
             "messages": [],
             "intent": None,
-            "selected_tool": None,
+            "selected_tool": getattr(input_data, "selected_tool", None),
             "tool_reasoning": None,
             "tool_result": None,
             "error": None,

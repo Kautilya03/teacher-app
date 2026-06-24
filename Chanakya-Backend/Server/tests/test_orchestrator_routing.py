@@ -95,7 +95,7 @@ async def test_orchestrator_routing():
             # Show a snippet of the response
             explanation = ""
             if isinstance(result.result, dict):
-                explanation = result.result.get('explanation', '')
+                explanation = result.result.get('explanation') or result.result.get('response') or ''
             elif hasattr(result.result, 'explanation'):
                 explanation = result.result.explanation
             elif hasattr(result.result, 'model_dump'):

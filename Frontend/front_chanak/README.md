@@ -142,7 +142,7 @@ Run the following commands within the `Frontend/front_chanak` directory:
 
 ## 🔗 Architecture & API Proxies
 
-To bypass Cross-Origin Resource Sharing (CORS) issues during development, the frontend configuration in [vite.config.js](file:///c:/Users/kauti/OneDrive/Desktop/Hackathon%20Projects/final-repo/teacher-app/Frontend/front_chanak/vite.config.js) utilizes local proxy rules:
+To bypass Cross-Origin Resource Sharing (CORS) issues during development, the frontend configuration in [vite.config.js](./vite.config.js) utilizes local proxy rules:
 
 * `/api` requests are automatically proxied to the FastAPI server running on `http://localhost:3000`.
 * `/api/dashboard` queries are mapped and routed to the corresponding dashboard API server.
